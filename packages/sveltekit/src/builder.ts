@@ -225,6 +225,7 @@ export const OPTIONS = createSvelteKitHandler('OPTIONS');`
     }
   }
 }
+<<<<<<< HEAD
 
 /**
  * Gets the list of directories to scan for workflow files.
@@ -246,3 +247,5 @@ export function getWorkflowDirs(options?: { dirs?: string[] }): string[] {
 function unique<T>(array: T[]): T[] {
   return Array.from(new Set(array));
 }
+=======
+>>>>>>> e28cfa93 (fix: cleanup builder directories (#319))
