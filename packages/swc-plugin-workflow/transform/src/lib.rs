@@ -182,8 +182,8 @@ pub struct StepTransform {
     // (parent_var_name, prop_name, arrow_expr, span)
     object_property_step_functions: Vec<(String, String, ArrowExpr, swc_core::common::Span)>,
     // Track nested step functions inside workflow functions for hoisting in step mode
-    // (fn_name, fn_expr, span)
-    nested_step_functions: Vec<(String, FnExpr, swc_core::common::Span)>,
+    // (fn_name, fn_expr, span, closure_vars)
+    nested_step_functions: Vec<(String, FnExpr, swc_core::common::Span, Vec<String>)>,
     // Counter for anonymous function names
     #[allow(dead_code)]
     anonymous_fn_counter: usize,
@@ -193,6 +193,8 @@ pub struct StepTransform {
     // Current context: variable name being processed when visiting object properties
     #[allow(dead_code)]
     current_var_context: Option<String>,
+    // Track module-level imports to exclude from closure variables
+    module_imports: HashSet<String>,
 }
 
 // Structure to track variable names and their access patterns
@@ -256,6 +258,357 @@ impl TryFrom<&Expr> for Name {
     }
 }
 
+// Visitor to collect closure variables from a nested step function
+struct ClosureVariableCollector {
+    closure_vars: HashSet<String>,
+    local_vars: HashSet<String>,
+    params: HashSet<String>,
+}
+
+impl ClosureVariableCollector {
+    fn new() -> Self {
+        Self {
+            closure_vars: HashSet::new(),
+            local_vars: HashSet::new(),
+            params: HashSet::new(),
+        }
+    }
+    
+    fn collect_from_function(function: &Function, module_imports: &HashSet<String>) -> Vec<String> {
+        let mut collector = Self::new();
+        
+        // Add module-level imports to local_vars so they're not considered closure vars
+        collector.local_vars.extend(module_imports.iter().cloned());
+        
+        // Collect parameters
+        for param in &function.params {
+            collector.collect_param_names(&param.pat);
+        }
+        
+        // Visit function body to collect references and declarations
+        if let Some(body) = &function.body {
+            collector.collect_from_block_stmt(body);
+        }
+        
+        // Return closure vars sorted for deterministic output
+        let mut vars: Vec<String> = collector.closure_vars.into_iter().collect();
+        vars.sort();
+        vars
+    }
+    
+    fn collect_from_arrow_expr(arrow: &ArrowExpr, module_imports: &HashSet<String>) -> Vec<String> {
+        let mut collector = Self::new();
+        
+        // Add module-level imports to local_vars so they're not considered closure vars
+        collector.local_vars.extend(module_imports.iter().cloned());
+        
+        // Collect parameters
+        for param in &arrow.params {
+            collector.collect_param_names(param);
+        }
+        
+        // Visit arrow body
+        match &*arrow.body {
+            BlockStmtOrExpr::BlockStmt(block) => {
+                collector.collect_from_block_stmt(block);
+            }
+            BlockStmtOrExpr::Expr(expr) => {
+                collector.collect_from_expr(expr);
+            }
+        }
+        
+        // Return closure vars sorted for deterministic output
+        let mut vars: Vec<String> = collector.closure_vars.into_iter().collect();
+        vars.sort();
+        vars
+    }
+    
+    fn collect_param_names(&mut self, pat: &Pat) {
+        match pat {
+            Pat::Ident(ident) => {
+                self.params.insert(ident.id.sym.to_string());
+            }
+            Pat::Array(array) => {
+                for elem in array.elems.iter().flatten() {
+                    self.collect_param_names(elem);
+                }
+            }
+            Pat::Object(obj) => {
+                for prop in &obj.props {
+                    match prop {
+                        ObjectPatProp::KeyValue(kv) => {
+                            self.collect_param_names(&kv.value);
+                        }
+                        ObjectPatProp::Assign(assign) => {
+                            self.params.insert(assign.key.id.sym.to_string());
+                        }
+                        ObjectPatProp::Rest(rest) => {
+                            self.collect_param_names(&rest.arg);
+                        }
+                    }
+                }
+            }
+            Pat::Rest(rest) => {
+                self.collect_param_names(&rest.arg);
+            }
+            Pat::Assign(assign) => {
+                self.collect_param_names(&assign.left);
+            }
+            _ => {}
+        }
+    }
+    
+    fn collect_from_block_stmt(&mut self, block: &BlockStmt) {
+        for stmt in &block.stmts {
+            self.collect_from_stmt(stmt);
+        }
+    }
+    
+    fn collect_from_stmt(&mut self, stmt: &Stmt) {
+        match stmt {
+            Stmt::Decl(decl) => {
+                match decl {
+                    Decl::Var(var_decl) => {
+                        for declarator in &var_decl.decls {
+                            // Collect the declared variable names
+                            self.collect_declared_names(&declarator.name);
+                            // Then collect references in the initializer
+                            if let Some(init) = &declarator.init {
+                                self.collect_from_expr(init);
+                            }
+                        }
+                    }
+                    Decl::Fn(fn_decl) => {
+                        self.local_vars.insert(fn_decl.ident.sym.to_string());
+                        // Don't visit nested function bodies for closure detection
+                    }
+                    _ => {}
+                }
+            }
+            Stmt::Expr(expr_stmt) => {
+                self.collect_from_expr(&expr_stmt.expr);
+            }
+            Stmt::If(if_stmt) => {
+                self.collect_from_expr(&if_stmt.test);
+                self.collect_from_stmt(&if_stmt.cons);
+                if let Some(alt) = &if_stmt.alt {
+                    self.collect_from_stmt(alt);
+                }
+            }
+            Stmt::Return(ret_stmt) => {
+                if let Some(arg) = &ret_stmt.arg {
+                    self.collect_from_expr(arg);
+                }
+            }
+            Stmt::Block(block) => {
+                self.collect_from_block_stmt(block);
+            }
+            Stmt::For(for_stmt) => {
+                if let Some(init) = &for_stmt.init {
+                    match init {
+                        VarDeclOrExpr::VarDecl(var_decl) => {
+                            for declarator in &var_decl.decls {
+                                self.collect_declared_names(&declarator.name);
+                                if let Some(init) = &declarator.init {
+                                    self.collect_from_expr(init);
+                                }
+                            }
+                        }
+                        VarDeclOrExpr::Expr(expr) => {
+                            self.collect_from_expr(expr);
+                        }
+                    }
+                }
+                if let Some(test) = &for_stmt.test {
+                    self.collect_from_expr(test);
+                }
+                if let Some(update) = &for_stmt.update {
+                    self.collect_from_expr(update);
+                }
+                self.collect_from_stmt(&for_stmt.body);
+            }
+            Stmt::While(while_stmt) => {
+                self.collect_from_expr(&while_stmt.test);
+                self.collect_from_stmt(&while_stmt.body);
+            }
+            _ => {}
+        }
+    }
+    
+    fn collect_declared_names(&mut self, pat: &Pat) {
+        match pat {
+            Pat::Ident(ident) => {
+                self.local_vars.insert(ident.id.sym.to_string());
+            }
+            Pat::Array(array) => {
+                for elem in array.elems.iter().flatten() {
+                    self.collect_declared_names(elem);
+                }
+            }
+            Pat::Object(obj) => {
+                for prop in &obj.props {
+                    match prop {
+                        ObjectPatProp::KeyValue(kv) => {
+                            self.collect_declared_names(&kv.value);
+                        }
+                        ObjectPatProp::Assign(assign) => {
+                            self.local_vars.insert(assign.key.id.sym.to_string());
+                        }
+                        ObjectPatProp::Rest(rest) => {
+                            self.collect_declared_names(&rest.arg);
+                        }
+                    }
+                }
+            }
+            Pat::Rest(rest) => {
+                self.collect_declared_names(&rest.arg);
+            }
+            Pat::Assign(assign) => {
+                self.collect_declared_names(&assign.left);
+            }
+            _ => {}
+        }
+    }
+    
+    fn collect_from_expr(&mut self, expr: &Expr) {
+        match expr {
+            Expr::Ident(ident) => {
+                let name = ident.sym.to_string();
+                // Only add as closure var if it's not a parameter or local var
+                if !self.params.contains(&name) && !self.local_vars.contains(&name) {
+                    // Filter out known globals
+                    if !is_global_identifier(&name) {
+                        self.closure_vars.insert(name);
+                    }
+                }
+            }
+            Expr::Call(call) => {
+                if let Callee::Expr(callee) = &call.callee {
+                    self.collect_from_expr(callee);
+                }
+                for arg in &call.args {
+                    self.collect_from_expr(&arg.expr);
+                }
+            }
+            Expr::Member(member) => {
+                self.collect_from_expr(&member.obj);
+            }
+            Expr::Bin(bin) => {
+                self.collect_from_expr(&bin.left);
+                self.collect_from_expr(&bin.right);
+            }
+            Expr::Unary(unary) => {
+                self.collect_from_expr(&unary.arg);
+            }
+            Expr::Cond(cond) => {
+                self.collect_from_expr(&cond.test);
+                self.collect_from_expr(&cond.cons);
+                self.collect_from_expr(&cond.alt);
+            }
+            Expr::Array(array) => {
+                for elem in array.elems.iter().flatten() {
+                    self.collect_from_expr(&elem.expr);
+                }
+            }
+            Expr::Object(obj) => {
+                for prop in &obj.props {
+                    match prop {
+                        PropOrSpread::Prop(prop) => {
+                            match &**prop {
+                                Prop::KeyValue(kv) => {
+                                    self.collect_from_expr(&kv.value);
+                                }
+                                Prop::Method(_method) => {
+                                    // Don't visit nested method bodies
+                                }
+                                _ => {}
+                            }
+                        }
+                        PropOrSpread::Spread(spread) => {
+                            self.collect_from_expr(&spread.expr);
+                        }
+                    }
+                }
+            }
+            Expr::Paren(paren) => {
+                self.collect_from_expr(&paren.expr);
+            }
+            Expr::Tpl(tpl) => {
+                for expr in &tpl.exprs {
+                    self.collect_from_expr(expr);
+                }
+            }
+            Expr::TaggedTpl(tagged) => {
+                self.collect_from_expr(&tagged.tag);
+                for expr in &tagged.tpl.exprs {
+                    self.collect_from_expr(expr);
+                }
+            }
+            Expr::Arrow(_arrow) => {
+                // Don't visit nested arrow function bodies for closure detection
+            }
+            Expr::Fn(_) => {
+                // Don't visit nested function bodies for closure detection
+            }
+            Expr::Assign(assign) => {
+                self.collect_from_expr(&assign.right);
+                // Also check the left side for references (e.g., obj.prop = value)
+                match &assign.left {
+                    AssignTarget::Simple(simple) => {
+                        match simple {
+                            SimpleAssignTarget::Ident(ident) => {
+                                // This is an assignment to a variable, check if it's a closure var
+                                self.collect_from_ident_binding(&ident.id);
+                            }
+                            SimpleAssignTarget::Member(member) => {
+                                self.collect_from_expr(&member.obj);
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Expr::Update(update) => {
+                self.collect_from_expr(&update.arg);
+            }
+            Expr::Await(await_expr) => {
+                self.collect_from_expr(&await_expr.arg);
+            }
+            _ => {}
+        }
+    }
+    
+    fn collect_from_ident_binding(&mut self, ident: &Ident) {
+        let name = ident.sym.to_string();
+        if !self.params.contains(&name) && !self.local_vars.contains(&name) {
+            if !is_global_identifier(&name) {
+                self.closure_vars.insert(name);
+            }
+        }
+    }
+}
+
+fn is_global_identifier(name: &str) -> bool {
+    matches!(
+        name,
+        "console" | "process" | "global" | "globalThis" | "window" | "document" |
+        "Array" | "Object" | "String" | "Number" | "Boolean" | "Date" | "Math" |
+        "JSON" | "Promise" | "Symbol" | "Error" | "TypeError" | "ReferenceError" |
+        "SyntaxError" | "RegExp" | "Map" | "Set" | "WeakMap" | "WeakSet" |
+        "parseInt" | "parseFloat" | "isNaN" | "isFinite" | "encodeURI" |
+        "decodeURI" | "encodeURIComponent" | "decodeURIComponent" | "undefined" |
+        "null" | "true" | "false" | "NaN" | "Infinity" | "setTimeout" |
+        "setInterval" | "clearTimeout" | "clearInterval" | "fetch" | "Response" |
+        "Request" | "Headers" | "URL" | "URLSearchParams" | "TextEncoder" |
+        "TextDecoder" | "Buffer" | "Uint8Array" | "Int8Array" | "Uint16Array" |
+        "Int16Array" | "Uint32Array" | "Int32Array" | "Float32Array" | "Float64Array" |
+        "BigInt" | "BigInt64Array" | "BigUint64Array" | "DataView" | "ArrayBuffer" |
+        "SharedArrayBuffer" | "Atomics" | "Proxy" | "Reflect" | "Intl" |
+        "WebAssembly" | "require" | "module" | "exports" | "__dirname" | "__filename"
+    )
+}
+
 impl StepTransform {
     fn process_stmt(&mut self, stmt: &mut Stmt) {
         match stmt {
@@ -281,6 +634,10 @@ impl StepTransform {
                                     // Clone the function and remove the directive before hoisting
                                     let mut cloned_function = fn_decl.function.clone();
                                     self.remove_use_step_directive(&mut cloned_function.body);
+                                    
+                                    // Collect closure variables
+                                    let closure_vars = ClosureVariableCollector::collect_from_function(&cloned_function, &self.module_imports);
+                                    
                                     let fn_expr = FnExpr {
                                         ident: Some(fn_decl.ident.clone()),
                                         function: cloned_function,
@@ -289,6 +646,7 @@ impl StepTransform {
                                         fn_name.clone(),
                                         fn_expr,
                                         fn_decl.function.span,
+                                        closure_vars,
                                     ));
                                     *stmt = Stmt::Empty(EmptyStmt { span: DUMMY_SP });
                                     return;
@@ -299,7 +657,10 @@ impl StepTransform {
                                         fn_decl.function.span,
                                         false,
                                     );
-                                    let proxy_ref = self.create_step_proxy_reference(&step_id);
+                                    
+                                    // Collect closure variables
+                                    let closure_vars = ClosureVariableCollector::collect_from_function(&fn_decl.function, &self.module_imports);
+                                    let proxy_ref = self.create_step_proxy_reference(&step_id, &closure_vars);
 
                                     let var_decl = Decl::Var(Box::new(VarDecl {
                                         span: DUMMY_SP,
@@ -458,6 +819,7 @@ impl StepTransform {
             anonymous_fn_counter: 0,
             object_property_workflow_conversions: Vec::new(),
             current_var_context: None,
+            module_imports: HashSet::new(),
         }
     }
 
@@ -1198,8 +1560,51 @@ impl StepTransform {
         }))
     }
 
-    // Create a proxy reference: globalThis[Symbol.for("WORKFLOW_USE_STEP")]("step_id") (workflow mode)
-    fn create_step_proxy_reference(&self, step_id: &str) -> Expr {
+    // Create a proxy reference: globalThis[Symbol.for("WORKFLOW_USE_STEP")]("step_id", closure_fn) (workflow mode)
+    fn create_step_proxy_reference(&self, step_id: &str, closure_vars: &[String]) -> Expr {
+        let mut args = vec![ExprOrSpread {
+            spread: None,
+            expr: Box::new(Expr::Lit(Lit::Str(Str {
+                span: DUMMY_SP,
+                value: step_id.into(),
+                raw: None,
+            }))),
+        }];
+        
+        // If there are closure variables, add them as a second argument
+        if !closure_vars.is_empty() {
+            // Create arrow function: () => ({ var1, var2 })
+            let closure_obj = Expr::Object(ObjectLit {
+                span: DUMMY_SP,
+                props: closure_vars
+                    .iter()
+                    .map(|var_name| {
+                        PropOrSpread::Prop(Box::new(Prop::Shorthand(Ident::new(
+                            var_name.clone().into(),
+                            DUMMY_SP,
+                            SyntaxContext::empty(),
+                        ))))
+                    })
+                    .collect(),
+            });
+            
+            let closure_fn = Expr::Arrow(ArrowExpr {
+                span: DUMMY_SP,
+                ctxt: SyntaxContext::empty(),
+                params: vec![],
+                body: Box::new(BlockStmtOrExpr::Expr(Box::new(closure_obj))),
+                is_async: false,
+                is_generator: false,
+                type_params: None,
+                return_type: None,
+            });
+            
+            args.push(ExprOrSpread {
+                spread: None,
+                expr: Box::new(closure_fn),
+            });
+        }
+        
         Expr::Call(CallExpr {
             span: DUMMY_SP,
             ctxt: SyntaxContext::empty(),
@@ -1236,14 +1641,7 @@ impl StepTransform {
                     })),
                 }),
             }))),
-            args: vec![ExprOrSpread {
-                spread: None,
-                expr: Box::new(Expr::Lit(Lit::Str(Str {
-                    span: DUMMY_SP,
-                    value: step_id.into(),
-                    raw: None,
-                }))),
-            }],
+            args,
             type_args: None,
         })
     }
@@ -2091,7 +2489,83 @@ impl VisitMut for StepTransform {
 
                     // Process nested step functions FIRST (they typically appear earlier in source)
                     let nested_functions: Vec<_> = self.nested_step_functions.drain(..).collect();
-                    for (fn_name, fn_expr, span) in nested_functions {
+                    for (fn_name, mut fn_expr, span, closure_vars) in nested_functions {
+                        // If there are closure variables, add destructuring as first statement
+                        if !closure_vars.is_empty() {
+                            if let Some(body) = &mut fn_expr.function.body {
+                                // Create destructuring statement: const { var1, var2 } = this[Symbol.for('WORKFLOW_CLOSURE')];
+                                let closure_destructure = Stmt::Decl(Decl::Var(Box::new(VarDecl {
+                                    span: DUMMY_SP,
+                                    ctxt: SyntaxContext::empty(),
+                                    kind: VarDeclKind::Const,
+                                    decls: vec![VarDeclarator {
+                                        span: DUMMY_SP,
+                                        name: Pat::Object(ObjectPat {
+                                            span: DUMMY_SP,
+                                            props: closure_vars
+                                                .iter()
+                                                .map(|var_name| {
+                                                    ObjectPatProp::Assign(AssignPatProp {
+                                                        span: DUMMY_SP,
+                                                        key: BindingIdent {
+                                                            id: Ident::new(
+                                                                var_name.clone().into(),
+                                                                DUMMY_SP,
+                                                                SyntaxContext::empty(),
+                                                            ),
+                                                            type_ann: None,
+                                                        },
+                                                        value: None,
+                                                    })
+                                                })
+                                                .collect(),
+                                            optional: false,
+                                            type_ann: None,
+                                        }),
+                                        init: Some(Box::new(Expr::Member(MemberExpr {
+                                            span: DUMMY_SP,
+                                            obj: Box::new(Expr::This(ThisExpr { span: DUMMY_SP })),
+                                            prop: MemberProp::Computed(ComputedPropName {
+                                                span: DUMMY_SP,
+                                                expr: Box::new(Expr::Call(CallExpr {
+                                                    span: DUMMY_SP,
+                                                    ctxt: SyntaxContext::empty(),
+                                                    callee: Callee::Expr(Box::new(Expr::Member(
+                                                        MemberExpr {
+                                                            span: DUMMY_SP,
+                                                            obj: Box::new(Expr::Ident(Ident::new(
+                                                                "Symbol".into(),
+                                                                DUMMY_SP,
+                                                                SyntaxContext::empty(),
+                                                            ))),
+                                                            prop: MemberProp::Ident(IdentName::new(
+                                                                "for".into(),
+                                                                DUMMY_SP,
+                                                            )),
+                                                        },
+                                                    ))),
+                                                    args: vec![ExprOrSpread {
+                                                        spread: None,
+                                                        expr: Box::new(Expr::Lit(Lit::Str(Str {
+                                                            span: DUMMY_SP,
+                                                            value: "WORKFLOW_CLOSURE".into(),
+                                                            raw: None,
+                                                        }))),
+                                                    }],
+                                                    type_args: None,
+                                                })),
+                                            }),
+                                        }))),
+                                        definite: false,
+                                    }],
+                                    declare: false,
+                                })));
+                                
+                                // Prepend to function body
+                                body.stmts.insert(0, closure_destructure);
+                            }
+                        }
+                        
                         // Create a function declaration for the hoisted function
                         let hoisted_decl = ModuleItem::Stmt(Stmt::Decl(Decl::Fn(FnDecl {
                             ident: Ident::new(
@@ -2442,6 +2916,25 @@ impl VisitMut for StepTransform {
     }
 
     fn visit_mut_module_items(&mut self, items: &mut Vec<ModuleItem>) {
+        // Collect module-level imports first
+        for item in items.iter() {
+            if let ModuleItem::ModuleDecl(ModuleDecl::Import(import_decl)) = item {
+                for specifier in &import_decl.specifiers {
+                    match specifier {
+                        ImportSpecifier::Named(named) => {
+                            self.module_imports.insert(named.local.sym.to_string());
+                        }
+                        ImportSpecifier::Default(default) => {
+                            self.module_imports.insert(default.local.sym.to_string());
+                        }
+                        ImportSpecifier::Namespace(namespace) => {
+                            self.module_imports.insert(namespace.local.sym.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        
         // Check for file-level directives
         self.has_file_step_directive = self.check_module_directive(items);
         self.has_file_workflow_directive = self.check_module_workflow_directive(items);
@@ -3719,6 +4212,9 @@ impl VisitMut for StepTransform {
                                                 self.remove_use_step_directive_arrow(
                                                     &mut cloned_arrow.body,
                                                 );
+                                                
+                                                // Collect closure variables before conversion
+                                                let closure_vars = ClosureVariableCollector::collect_from_arrow_expr(&cloned_arrow, &self.module_imports);
 
                                                 // Create a function expression from the arrow function
                                                 // (We need to convert it to a regular function for hoisting)
@@ -3773,6 +4269,7 @@ impl VisitMut for StepTransform {
                                                     name.clone(),
                                                     fn_expr,
                                                     arrow_expr.span,
+                                                    closure_vars,
                                                 ));
 
                                                 // Mark the entire var declarator for removal by nulling out the init
@@ -3787,8 +4284,11 @@ impl VisitMut for StepTransform {
                                                     arrow_expr.span,
                                                     false,
                                                 );
+                                                
+                                                // Collect closure variables
+                                                let closure_vars = ClosureVariableCollector::collect_from_arrow_expr(&arrow_expr, &self.module_imports);
                                                 *init = Box::new(
-                                                    self.create_step_proxy_reference(&step_id),
+                                                    self.create_step_proxy_reference(&step_id, &closure_vars),
                                                 );
                                             }
                                             TransformMode::Client => {
@@ -4239,6 +4739,9 @@ impl VisitMut for StepTransform {
                                                         self.remove_use_step_directive_arrow(
                                                             &mut cloned_arrow.body,
                                                         );
+                                                        
+                                                        // Collect closure variables
+                                                        let closure_vars = ClosureVariableCollector::collect_from_arrow_expr(&cloned_arrow, &self.module_imports);
 
                                                         // Convert to function expression
                                                         let fn_expr = FnExpr {
@@ -4299,6 +4802,7 @@ impl VisitMut for StepTransform {
                                                             generated_name.clone(),
                                                             fn_expr,
                                                             arrow_expr.span,
+                                                            closure_vars,
                                                         ));
 
                                                         // Replace with identifier reference
@@ -4318,8 +4822,11 @@ impl VisitMut for StepTransform {
                                                             arrow_expr.span,
                                                             false,
                                                         );
+                                                        
+                                                        // Collect closure variables
+                                                        let closure_vars = ClosureVariableCollector::collect_from_arrow_expr(&arrow_expr, &self.module_imports);
                                                         *kv_prop.value = self
-                                                            .create_step_proxy_reference(&step_id);
+                                                            .create_step_proxy_reference(&step_id, &closure_vars);
                                                     }
                                                     TransformMode::Client => {
                                                         // Just remove directive
@@ -4355,6 +4862,9 @@ impl VisitMut for StepTransform {
                                                         self.remove_use_step_directive(
                                                             &mut cloned_fn.function.body,
                                                         );
+                                                        
+                                                        // Collect closure variables
+                                                        let closure_vars = ClosureVariableCollector::collect_from_function(&*cloned_fn.function, &self.module_imports);
 
                                                         let hoisted_fn_expr = FnExpr {
                                                             ident: Some(Ident::new(
@@ -4369,6 +4879,7 @@ impl VisitMut for StepTransform {
                                                             generated_name.clone(),
                                                             hoisted_fn_expr,
                                                             fn_expr.function.span,
+                                                            closure_vars,
                                                         ));
 
                                                         // Replace with identifier reference
@@ -4388,8 +4899,11 @@ impl VisitMut for StepTransform {
                                                             fn_expr.function.span,
                                                             false,
                                                         );
+                                                        
+                                                        // Collect closure variables
+                                                        let closure_vars = ClosureVariableCollector::collect_from_function(&fn_expr.function, &self.module_imports);
                                                         *kv_prop.value = self
-                                                            .create_step_proxy_reference(&step_id);
+                                                            .create_step_proxy_reference(&step_id, &closure_vars);
                                                     }
                                                     TransformMode::Client => {
                                                         // Just remove directive
@@ -4428,6 +4942,9 @@ impl VisitMut for StepTransform {
                                                 self.remove_use_step_directive(
                                                     &mut cloned_function.body,
                                                 );
+                                                
+                                                // Collect closure variables
+                                                let closure_vars = ClosureVariableCollector::collect_from_function(&cloned_function, &self.module_imports);
 
                                                 let fn_expr = FnExpr {
                                                     ident: Some(Ident::new(
@@ -4442,6 +4959,7 @@ impl VisitMut for StepTransform {
                                                     generated_name.clone(),
                                                     fn_expr,
                                                     method_prop.function.span,
+                                                    closure_vars,
                                                 ));
 
                                                 // Replace method with property pointing to identifier
@@ -4465,6 +4983,9 @@ impl VisitMut for StepTransform {
                                                     method_prop.function.span,
                                                     false,
                                                 );
+                                                
+                                                // Collect closure variables
+                                                let closure_vars = ClosureVariableCollector::collect_from_function(&method_prop.function, &self.module_imports);
 
                                                 // Replace method with property pointing to proxy
                                                 *boxed_prop =
@@ -4473,6 +4994,7 @@ impl VisitMut for StepTransform {
                                                         value: Box::new(
                                                             self.create_step_proxy_reference(
                                                                 &step_id,
+                                                                &closure_vars,
                                                             ),
                                                         ),
                                                     }));
