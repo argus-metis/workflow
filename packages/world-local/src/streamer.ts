@@ -182,7 +182,8 @@ export function createStreamer(basedir: string): Streamer {
               break;
             }
             if (chunk.chunk.byteLength) {
-              controller.enqueue(new Uint8Array(chunk.chunk));
+              process.stdout.write('.');
+              controller.enqueue(Uint8Array.prototype.slice.call(chunk.chunk));
             }
           }
 

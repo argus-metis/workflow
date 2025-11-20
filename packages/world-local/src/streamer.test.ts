@@ -318,6 +318,62 @@ describe('streamer', () => {
 
         expect(chunks.join('')).toBe('123');
       });
+
+      it('should read from stream starting at specified startIndex', async () => {
+        const { streamer } = await setupStreamer();
+        const streamName = 'startindex-stream';
+
+        // Write 5 chunks with delays to ensure different ULID timestamps
+        for (let i = 0; i < 5; i++) {
+          await streamer.writeToStream(streamName, TEST_RUN_ID, `${i}`);
+          await new Promise((resolve) => setTimeout(resolve, 2));
+        }
+        await streamer.closeStream(streamName, TEST_RUN_ID);
+
+        // Read from startIndex=2 (should get chunks 2, 3, 4)
+        const stream = await streamer.readFromStream(streamName, 2);
+        const reader = stream.getReader();
+
+        const chunks: string[] = [];
+        let done = false;
+
+        while (!done) {
+          const result = await reader.read();
+          done = result.done;
+          if (result.value) {
+            chunks.push(Buffer.from(result.value).toString());
+          }
+        }
+
+        expect(chunks.join('')).toBe('234');
+      });
+
+      it('should read from stream starting from first chunk with startIndex=0', async () => {
+        const { streamer } = await setupStreamer();
+        const streamName = 'startindex-zero-stream';
+
+        await streamer.writeToStream(streamName, TEST_RUN_ID, 'first');
+        await new Promise((resolve) => setTimeout(resolve, 2));
+        await streamer.writeToStream(streamName, TEST_RUN_ID, 'second');
+        await streamer.closeStream(streamName, TEST_RUN_ID);
+
+        // Read from startIndex=0 (should get all chunks)
+        const stream = await streamer.readFromStream(streamName, 0);
+        const reader = stream.getReader();
+
+        const chunks: string[] = [];
+        let done = false;
+
+        while (!done) {
+          const result = await reader.read();
+          done = result.done;
+          if (result.value) {
+            chunks.push(Buffer.from(result.value).toString());
+          }
+        }
+
+        expect(chunks.join('')).toBe('firstsecond');
+      });
     });
 
     describe('integration scenarios', () => {
