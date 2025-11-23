@@ -7,7 +7,7 @@ import enhancedResolveOriginal from 'enhanced-resolve';
 import * as esbuild from 'esbuild';
 import { findUp } from 'find-up';
 import { glob } from 'tinyglobby';
-import type { WorkflowManifest } from './apply-swc-transform.js';
+import type { GraphManifest, WorkflowManifest } from './apply-swc-transform.js';
 import { createDiscoverEntriesPlugin } from './discover-entries-esbuild-plugin.js';
 import { createNodeModuleErrorPlugin } from './node-module-esbuild-plugin.js';
 import { createSwcPlugin } from './swc-esbuild-plugin.js';
@@ -837,5 +837,92 @@ export const OPTIONS = handler;`;
     } catch {
       // We're intentionally silently ignoring this error - creating .gitignore isn't critical
     }
+  }
+
+  /**
+   * Creates a graph manifest JSON file by running the SWC plugin in 'graph' mode.
+   * The manifest contains React Flow-compatible graph data for visualizing workflows.
+   */
+  protected async createGraphManifest({
+    inputFiles,
+    outfile,
+    tsBaseUrl,
+    tsPaths,
+  }: {
+    inputFiles: string[];
+    outfile: string;
+    tsBaseUrl?: string;
+    tsPaths?: Record<string, string[]>;
+  }): Promise<void> {
+    const graphBuildStart = Date.now();
+    console.log('Creating workflow graph manifest...');
+
+    const { discoveredWorkflows: workflowFiles } = await this.discoverEntries(
+      inputFiles,
+      dirname(outfile)
+    );
+
+    if (workflowFiles.length === 0) {
+      console.log('No workflow files found, skipping graph generation');
+      return;
+    }
+
+    // Import applySwcTransform dynamically
+    const { applySwcTransform } = await import('./apply-swc-transform.js');
+
+    // Aggregate all graph data from all workflow files
+    const combinedGraphManifest: GraphManifest = {
+      version: '1.0.0',
+      workflows: {},
+    };
+
+    for (const workflowFile of workflowFiles) {
+      try {
+        const source = await readFile(workflowFile, 'utf-8');
+        const normalizedWorkingDir = this.config.workingDir.replace(/\\/g, '/');
+        const normalizedFile = workflowFile.replace(/\\/g, '/');
+        let relativePath = relative(
+          normalizedWorkingDir,
+          normalizedFile
+        ).replace(/\\/g, '/');
+        if (!relativePath.startsWith('.')) {
+          relativePath = `./${relativePath}`;
+        }
+
+        const { graphManifest } = await applySwcTransform(
+          relativePath,
+          source,
+          'graph',
+          {
+            paths: tsPaths,
+            baseUrl: tsBaseUrl,
+          }
+        );
+
+        if (graphManifest && graphManifest.workflows) {
+          // Merge the workflows from this file into the combined manifest
+          Object.assign(
+            combinedGraphManifest.workflows,
+            graphManifest.workflows
+          );
+        }
+      } catch (error) {
+        console.warn(
+          `Failed to extract graph from ${workflowFile}:`,
+          error instanceof Error ? error.message : String(error)
+        );
+      }
+    }
+
+    // Write the combined graph manifest
+    await this.ensureDirectory(outfile);
+    await writeFile(outfile, JSON.stringify(combinedGraphManifest, null, 2));
+
+    console.log(
+      `Created graph manifest with ${
+        Object.keys(combinedGraphManifest.workflows).length
+      } workflow(s)`,
+      `${Date.now() - graphBuildStart}ms`
+    );
   }
 }

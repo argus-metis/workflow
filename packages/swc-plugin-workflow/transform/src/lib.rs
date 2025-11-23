@@ -1,12 +1,13 @@
+mod graph;
 mod naming;
 
 use serde::Deserialize;
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 use swc_core::{
     common::{DUMMY_SP, SyntaxContext, errors::HANDLER},
     ecma::{
         ast::*,
-        visit::{VisitMut, VisitMutWith, noop_visit_mut_type},
+        visit::{Visit, VisitMut, VisitMutWith, VisitWith, noop_visit_mut_type},
     },
 };
 
@@ -144,6 +145,7 @@ pub enum TransformMode {
     Step,
     Workflow,
     Client,
+    Graph,
 }
 
 #[derive(Debug)]
@@ -196,9 +198,161 @@ pub struct StepTransform {
     // Track object properties that need to be converted to initializer calls in workflow mode
     // (parent_var_name, prop_name, step_id)
     object_property_workflow_conversions: Vec<(String, String, String)>,
+    // Graph builder for graph mode
+    graph_builder: Option<graph::GraphBuilder>,
+    pending_graph_workflows: Vec<(String, String, Function)>,
     // Current context: variable name being processed when visiting object properties
     #[allow(dead_code)]
     current_var_context: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GraphCallKind {
+    Step,
+    Workflow,
+}
+
+#[derive(Debug, Clone)]
+struct GraphCallEvent {
+    fn_name: String,
+    span: swc_core::common::Span,
+    kind: GraphCallKind,
+}
+
+#[derive(Debug, Clone)]
+struct GraphNodeRef {
+    name: String,
+    kind: GraphCallKind,
+}
+
+struct GraphUsageCollector<'a> {
+    step_function_names: &'a HashSet<String>,
+    workflow_function_names: &'a HashSet<String>,
+    aliases: HashMap<Id, GraphNodeRef>,
+    calls: Vec<GraphCallEvent>,
+}
+
+impl<'a> GraphUsageCollector<'a> {
+    fn new(
+        step_function_names: &'a HashSet<String>,
+        workflow_function_names: &'a HashSet<String>,
+    ) -> Self {
+        Self {
+            step_function_names,
+            workflow_function_names,
+            aliases: HashMap::new(),
+            calls: Vec::new(),
+        }
+    }
+
+    fn collect(mut self, function: &Function) -> Vec<GraphCallEvent> {
+        if let Some(body) = &function.body {
+            body.visit_with(&mut self);
+        }
+        self.calls
+    }
+
+    fn resolve_symbol_name(&self, name: &str) -> Option<GraphNodeRef> {
+        if self.step_function_names.contains(name) {
+            Some(GraphNodeRef {
+                name: name.to_string(),
+                kind: GraphCallKind::Step,
+            })
+        } else if self.workflow_function_names.contains(name) {
+            Some(GraphNodeRef {
+                name: name.to_string(),
+                kind: GraphCallKind::Workflow,
+            })
+        } else {
+            None
+        }
+    }
+
+    fn resolve_ident_direct(&self, ident: &Ident) -> Option<GraphNodeRef> {
+        self.resolve_symbol_name(&ident.sym.to_string())
+    }
+
+    fn resolve_ident(&self, ident: &Ident) -> Option<GraphNodeRef> {
+        if let Some(alias) = self.aliases.get(&ident.to_id()) {
+            return Some(alias.clone());
+        }
+        self.resolve_ident_direct(ident)
+    }
+
+    fn resolve_expr_to_node(&self, expr: &Expr) -> Option<GraphNodeRef> {
+        match expr {
+            Expr::Ident(ident) => self.resolve_ident(ident),
+            Expr::Paren(paren) => self.resolve_expr_to_node(&paren.expr),
+            Expr::Await(await_expr) => self.resolve_expr_to_node(&await_expr.arg),
+            _ => None,
+        }
+    }
+
+    fn resolve_callee(&self, callee: &Callee) -> Option<GraphNodeRef> {
+        match callee {
+            Callee::Expr(expr) => self.resolve_expr_to_node(expr),
+            _ => None,
+        }
+    }
+
+    fn record_usage(&mut self, node: GraphNodeRef, span: swc_core::common::Span) {
+        self.calls.push(GraphCallEvent {
+            fn_name: node.name,
+            span,
+            kind: node.kind,
+        });
+    }
+}
+
+impl<'a> Visit for GraphUsageCollector<'a> {
+    fn visit_call_expr(&mut self, call: &CallExpr) {
+        if let Some(node) = self.resolve_callee(&call.callee) {
+            self.record_usage(node, call.span);
+        }
+        match &call.callee {
+            Callee::Expr(expr) => {
+                if !matches!(expr.as_ref(), Expr::Ident(_)) {
+                    expr.visit_with(self);
+                }
+            }
+            Callee::Super(super_callee) => {
+                super_callee.visit_with(self);
+            }
+            Callee::Import(import) => {
+                import.visit_with(self);
+            }
+        }
+        for arg in &call.args {
+            arg.visit_with(self);
+        }
+        if let Some(type_args) = &call.type_args {
+            type_args.visit_with(self);
+        }
+    }
+
+    fn visit_expr(&mut self, expr: &Expr) {
+        match expr {
+            Expr::Ident(ident) => {
+                if let Some(node) = self.resolve_ident(ident) {
+                    self.record_usage(node, ident.span);
+                }
+            }
+            _ => {
+                expr.visit_children_with(self);
+            }
+        }
+    }
+
+    fn visit_var_declarator(&mut self, decl: &VarDeclarator) {
+        if let Some(init) = &decl.init {
+            if let Some(target) = self.resolve_expr_to_node(init) {
+                if let Pat::Ident(binding) = &decl.name {
+                    self.aliases.insert(binding.id.to_id(), target);
+                }
+            }
+        }
+        decl.visit_children_with(self);
+    }
 }
 
 // Structure to track variable names and their access patterns
@@ -334,6 +488,10 @@ impl StepTransform {
                                     *stmt = Stmt::Empty(EmptyStmt { span: DUMMY_SP });
                                     return;
                                 }
+                                TransformMode::Graph => {
+                                    // No transformation in graph mode, but continue traversing
+                                    stmt.visit_mut_children_with(self);
+                                }
                             }
                         } else {
                             match self.mode {
@@ -374,6 +532,10 @@ impl StepTransform {
                                 }
                                 TransformMode::Client => {
                                     self.remove_use_step_directive(&mut fn_decl.function.body);
+                                    stmt.visit_mut_children_with(self);
+                                }
+                                TransformMode::Graph => {
+                                    // No transformation in graph mode, but continue traversing
                                     stmt.visit_mut_children_with(self);
                                 }
                             }
@@ -425,21 +587,99 @@ impl StepTransform {
                                     .push((fn_name.clone(), fn_decl.function.span));
                                 stmt.visit_mut_children_with(self);
                             }
+                            TransformMode::Graph => {
+                                // No transformation in graph mode
+                                stmt.visit_mut_children_with(self);
+                            }
                         }
                     }
                 } else {
                     stmt.visit_mut_children_with(self);
                 }
             }
-            Stmt::Decl(Decl::Var(_)) => {
-                stmt.visit_mut_children_with(self);
-            }
             _ => {
+                // For all other statement types, continue traversing to detect nested step calls
                 stmt.visit_mut_children_with(self);
             }
         }
     }
+
+    fn queue_workflow_graph(
+        &mut self,
+        workflow_name: &str,
+        workflow_id: &str,
+        function: &Function,
+    ) {
+        if self.mode != TransformMode::Graph {
+            return;
+        }
+        self.pending_graph_workflows.push((
+            workflow_name.to_string(),
+            workflow_id.to_string(),
+            function.clone(),
+        ));
+    }
+
+    fn process_pending_workflow_graphs(&mut self) {
+        if self.mode != TransformMode::Graph {
+            return;
+        }
+        let pending = std::mem::take(&mut self.pending_graph_workflows);
+        for (workflow_name, workflow_id, function) in pending {
+            self.build_workflow_graph(&workflow_name, workflow_id, &function);
+        }
+    }
+
+    fn build_workflow_graph(
+        &mut self,
+        workflow_name: &str,
+        workflow_id: String,
+        function: &Function,
+    ) {
+        if self.mode != TransformMode::Graph {
+            return;
+        }
+
+        let Some(mut builder) = self.graph_builder.take() else {
+            return;
+        };
+
+        let collector =
+            GraphUsageCollector::new(&self.step_function_names, &self.workflow_function_names)
+                .collect(function);
+        eprintln!(
+            "[graph] collected {} calls for {}",
+            collector.len(),
+            workflow_name
+        );
+
+        let file_path = self.filename.clone();
+        builder.start_workflow(workflow_name, &file_path, &workflow_id);
+        for event in collector {
+            let line = event.span.lo.0 as usize;
+            match event.kind {
+                GraphCallKind::Step => {
+                    let step_id = self.create_id(Some(&event.fn_name), event.span, false);
+                    builder.add_step_node(&event.fn_name, &step_id, line);
+                }
+                GraphCallKind::Workflow => {
+                    let nested_id = self.create_id(Some(&event.fn_name), event.span, true);
+                    builder.add_workflow_node(&event.fn_name, &nested_id, line);
+                }
+            }
+        }
+        builder.finish_workflow();
+
+        self.graph_builder = Some(builder);
+    }
+
     pub fn new(mode: TransformMode, filename: String) -> Self {
+        let graph_builder = if mode == TransformMode::Graph {
+            Some(graph::GraphBuilder::new())
+        } else {
+            None
+        };
+
         Self {
             mode,
             filename,
@@ -466,6 +706,8 @@ impl StepTransform {
             nested_step_functions: Vec::new(),
             anonymous_fn_counter: 0,
             object_property_workflow_conversions: Vec::new(),
+            graph_builder,
+            pending_graph_workflows: Vec::new(),
             current_var_context: None,
         }
     }
@@ -498,12 +740,12 @@ impl StepTransform {
     fn generate_unique_name(&self, base_name: &str) -> String {
         let mut name = base_name.to_string();
         let mut counter = 0;
-        
+
         while self.declared_identifiers.contains(&name) {
             counter += 1;
             name = format!("{}${}", base_name, counter);
         }
-        
+
         name
     }
 
@@ -511,10 +753,27 @@ impl StepTransform {
     fn collect_declared_identifiers(&mut self, items: &[ModuleItem]) {
         for item in items {
             match item {
-                ModuleItem::Stmt(Stmt::Decl(decl)) => {
-                    match decl {
+                ModuleItem::Stmt(Stmt::Decl(decl)) => match decl {
+                    Decl::Fn(fn_decl) => {
+                        self.declared_identifiers
+                            .insert(fn_decl.ident.sym.to_string());
+                    }
+                    Decl::Var(var_decl) => {
+                        for declarator in &var_decl.decls {
+                            self.collect_idents_from_pat(&declarator.name);
+                        }
+                    }
+                    Decl::Class(class_decl) => {
+                        self.declared_identifiers
+                            .insert(class_decl.ident.sym.to_string());
+                    }
+                    _ => {}
+                },
+                ModuleItem::ModuleDecl(module_decl) => match module_decl {
+                    ModuleDecl::ExportDecl(export_decl) => match &export_decl.decl {
                         Decl::Fn(fn_decl) => {
-                            self.declared_identifiers.insert(fn_decl.ident.sym.to_string());
+                            self.declared_identifiers
+                                .insert(fn_decl.ident.sym.to_string());
                         }
                         Decl::Var(var_decl) => {
                             for declarator in &var_decl.decls {
@@ -522,63 +781,96 @@ impl StepTransform {
                             }
                         }
                         Decl::Class(class_decl) => {
-                            self.declared_identifiers.insert(class_decl.ident.sym.to_string());
+                            self.declared_identifiers
+                                .insert(class_decl.ident.sym.to_string());
                         }
                         _ => {}
+                    },
+                    ModuleDecl::ExportDefaultDecl(default_decl) => match &default_decl.decl {
+                        DefaultDecl::Fn(fn_expr) => {
+                            if let Some(ident) = &fn_expr.ident {
+                                self.declared_identifiers.insert(ident.sym.to_string());
+                            }
+                        }
+                        DefaultDecl::Class(class_expr) => {
+                            if let Some(ident) = &class_expr.ident {
+                                self.declared_identifiers.insert(ident.sym.to_string());
+                            }
+                        }
+                        _ => {}
+                    },
+                    ModuleDecl::Import(import_decl) => {
+                        for specifier in &import_decl.specifiers {
+                            match specifier {
+                                ImportSpecifier::Named(named) => {
+                                    self.declared_identifiers
+                                        .insert(named.local.sym.to_string());
+                                }
+                                ImportSpecifier::Default(default) => {
+                                    self.declared_identifiers
+                                        .insert(default.local.sym.to_string());
+                                }
+                                ImportSpecifier::Namespace(namespace) => {
+                                    self.declared_identifiers
+                                        .insert(namespace.local.sym.to_string());
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
+        }
+    }
+
+    // Collect step and workflow function names in a pre-pass (for graph mode)
+    // This ensures we know about all step functions before traversing workflow bodies
+    fn collect_workflow_metadata(&mut self, items: &[ModuleItem]) {
+        for item in items {
+            match item {
+                ModuleItem::Stmt(Stmt::Decl(Decl::Fn(fn_decl))) => {
+                    self.collect_function_metadata(
+                        &fn_decl.function,
+                        &fn_decl.ident.sym.to_string(),
+                    );
+                }
+                ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(export_decl)) => {
+                    if let Decl::Fn(fn_decl) = &export_decl.decl {
+                        self.collect_function_metadata(
+                            &fn_decl.function,
+                            &fn_decl.ident.sym.to_string(),
+                        );
                     }
                 }
-                ModuleItem::ModuleDecl(module_decl) => {
-                    match module_decl {
-                        ModuleDecl::ExportDecl(export_decl) => {
-                            match &export_decl.decl {
-                                Decl::Fn(fn_decl) => {
-                                    self.declared_identifiers.insert(fn_decl.ident.sym.to_string());
-                                }
-                                Decl::Var(var_decl) => {
-                                    for declarator in &var_decl.decls {
-                                        self.collect_idents_from_pat(&declarator.name);
-                                    }
-                                }
-                                Decl::Class(class_decl) => {
-                                    self.declared_identifiers.insert(class_decl.ident.sym.to_string());
-                                }
-                                _ => {}
-                            }
+                ModuleItem::ModuleDecl(ModuleDecl::ExportDefaultDecl(default_decl)) => {
+                    if let DefaultDecl::Fn(fn_expr) = &default_decl.decl {
+                        if let Some(ident) = &fn_expr.ident {
+                            self.collect_function_metadata(
+                                &fn_expr.function,
+                                &ident.sym.to_string(),
+                            );
                         }
-                        ModuleDecl::ExportDefaultDecl(default_decl) => {
-                            match &default_decl.decl {
-                                DefaultDecl::Fn(fn_expr) => {
-                                    if let Some(ident) = &fn_expr.ident {
-                                        self.declared_identifiers.insert(ident.sym.to_string());
-                                    }
-                                }
-                                DefaultDecl::Class(class_expr) => {
-                                    if let Some(ident) = &class_expr.ident {
-                                        self.declared_identifiers.insert(ident.sym.to_string());
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                        ModuleDecl::Import(import_decl) => {
-                            for specifier in &import_decl.specifiers {
-                                match specifier {
-                                    ImportSpecifier::Named(named) => {
-                                        self.declared_identifiers.insert(named.local.sym.to_string());
-                                    }
-                                    ImportSpecifier::Default(default) => {
-                                        self.declared_identifiers.insert(default.local.sym.to_string());
-                                    }
-                                    ImportSpecifier::Namespace(namespace) => {
-                                        self.declared_identifiers.insert(namespace.local.sym.to_string());
-                                    }
-                                }
-                            }
-                        }
-                        _ => {}
                     }
                 }
                 _ => {}
+            }
+        }
+    }
+
+    // Helper to check if a function has step or workflow directive and collect metadata
+    fn collect_function_metadata(&mut self, func: &Function, name: &str) {
+        if let Some(body) = &func.body {
+            if let Some(first_stmt) = body.stmts.first() {
+                if let Stmt::Expr(ExprStmt { expr, .. }) = first_stmt {
+                    if let Expr::Lit(Lit::Str(Str { value, .. })) = &**expr {
+                        if value == "use step" {
+                            self.step_function_names.insert(name.to_string());
+                        } else if value == "use workflow" {
+                            self.workflow_function_names.insert(name.to_string());
+                        }
+                    }
+                }
             }
         }
     }
@@ -859,6 +1151,9 @@ impl StepTransform {
                                     TransformMode::Client => {
                                         // In client mode, just remove the directive (already done above)
                                     }
+                                    TransformMode::Graph => {
+                                        // No transformation in graph mode
+                                    }
                                 }
                             }
                         }
@@ -906,6 +1201,9 @@ impl StepTransform {
             }
             TransformMode::Client => {
                 // In client mode, just remove the directive
+            }
+            TransformMode::Graph => {
+                // No transformation in graph mode
             }
         }
     }
@@ -1957,7 +2255,8 @@ impl StepTransform {
                 .map(|fn_name| {
                     // Check if this export name has a different const name (e.g., "default" -> "__default")
                     let fn_name_str: &str = fn_name;
-                    let actual_name = self.workflow_export_to_const_name
+                    let actual_name = self
+                        .workflow_export_to_const_name
                         .get(fn_name_str)
                         .map(|s| s.as_str())
                         .unwrap_or(fn_name_str);
@@ -2189,8 +2488,21 @@ impl<'a> VisitMut for ComprehensiveUsageCollector<'a> {
 
 impl VisitMut for StepTransform {
     fn visit_mut_program(&mut self, program: &mut Program) {
+        // In Graph mode, do a pre-pass to collect all step and workflow function names
+        // This ensures we know about all step functions before we start building the graph
+        if self.mode == TransformMode::Graph {
+            if let Program::Module(module) = program {
+                self.collect_workflow_metadata(&module.body);
+            }
+        }
+
         // First pass: collect step functions
         program.visit_mut_children_with(self);
+
+        // Ensure graph data is processed after traversing entire program
+        if self.mode == TransformMode::Graph {
+            self.process_pending_workflow_graphs();
+        }
 
         // Add necessary imports and registrations
         match program {
@@ -2211,6 +2523,41 @@ impl VisitMut for StepTransform {
                     }
                     TransformMode::Client => {
                         // No imports needed for client mode since step functions are not transformed
+                    }
+                    TransformMode::Graph => {
+                        // Output graph as a comment in graph mode
+                        if let Some(builder) = self.graph_builder.take() {
+                            if builder.has_workflows() {
+                                let manifest = builder.to_manifest();
+                                // Output as a comment similar to workflow metadata
+                                if let Ok(json) = serde_json::to_string(&manifest) {
+                                    let comment = format!("/**__workflow_graph{}*/", json);
+                                    // Insert the graph comment at the beginning of the file
+                                    let insert_position = module
+                                        .body
+                                        .iter()
+                                        .position(|item| {
+                                            !matches!(
+                                                item,
+                                                ModuleItem::ModuleDecl(ModuleDecl::Import(_))
+                                            )
+                                        })
+                                        .unwrap_or(0);
+
+                                    module.body.insert(
+                                        insert_position,
+                                        ModuleItem::Stmt(Stmt::Expr(ExprStmt {
+                                            span: DUMMY_SP,
+                                            expr: Box::new(Expr::Lit(Lit::Str(Str {
+                                                span: DUMMY_SP,
+                                                value: comment.clone().into(),
+                                                raw: Some(comment.into()),
+                                            }))),
+                                        })),
+                                    );
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -2421,6 +2768,9 @@ impl VisitMut for StepTransform {
                         TransformMode::Client => {
                             // No imports needed for workflow mode
                         }
+                        TransformMode::Graph => {
+                            // No imports needed for graph mode
+                        }
                     }
 
                     // Convert script statements to module items
@@ -2586,7 +2936,13 @@ impl VisitMut for StepTransform {
     fn visit_mut_module_items(&mut self, items: &mut Vec<ModuleItem>) {
         // Collect all declared identifiers to avoid naming collisions
         self.collect_declared_identifiers(items);
-        
+
+        // In Graph mode, collect all step and workflow function names first
+        // This ensures we know about all step functions before we start building the graph
+        if self.mode == TransformMode::Graph {
+            self.collect_workflow_metadata(items);
+        }
+
         // Check for file-level directives
         self.has_file_step_directive = self.check_module_directive(items);
         self.has_file_workflow_directive = self.check_module_workflow_directive(items);
@@ -2599,6 +2955,7 @@ impl VisitMut for StepTransform {
                         TransformMode::Step => value == "use step",
                         TransformMode::Workflow => value == "use workflow",
                         TransformMode::Client => value == "use step" || value == "use workflow",
+                        TransformMode::Graph => false,
                     };
                     if should_remove {
                         items.remove(0);
@@ -2922,8 +3279,9 @@ impl VisitMut for StepTransform {
         // Handle default workflow exports (workflow and client modes)
         // We need to: 1) find the export default position, 2) replace it with const declaration,
         // 3) add workflowId assignment, 4) add export default at the end
-        if (self.mode == TransformMode::Workflow || self.mode == TransformMode::Client) 
-            && !self.default_workflow_exports.is_empty() {
+        if (self.mode == TransformMode::Workflow || self.mode == TransformMode::Client)
+            && !self.default_workflow_exports.is_empty()
+        {
             let default_workflows: Vec<_> = self.default_workflow_exports.drain(..).collect();
             let default_exports: Vec<_> = self.default_exports_to_replace.drain(..).collect();
 
@@ -2931,8 +3289,8 @@ impl VisitMut for StepTransform {
             let mut export_position = None;
             for (i, item) in items.iter().enumerate() {
                 match item {
-                    ModuleItem::ModuleDecl(ModuleDecl::ExportDefaultExpr(_)) |
-                    ModuleItem::ModuleDecl(ModuleDecl::ExportDefaultDecl(_)) => {
+                    ModuleItem::ModuleDecl(ModuleDecl::ExportDefaultExpr(_))
+                    | ModuleItem::ModuleDecl(ModuleDecl::ExportDefaultDecl(_)) => {
                         export_position = Some(i);
                         break;
                     }
@@ -2947,35 +3305,46 @@ impl VisitMut for StepTransform {
                 // Insert in correct order: const, workflowId, export default
                 for (const_name, fn_expr, span) in default_workflows {
                     // Insert const declaration at the original export position
-                    items.insert(pos, ModuleItem::Stmt(Stmt::Decl(Decl::Var(Box::new(VarDecl {
-                        span: DUMMY_SP,
-                        ctxt: SyntaxContext::empty(),
-                        kind: VarDeclKind::Const,
-                        declare: false,
-                        decls: vec![VarDeclarator {
+                    items.insert(
+                        pos,
+                        ModuleItem::Stmt(Stmt::Decl(Decl::Var(Box::new(VarDecl {
                             span: DUMMY_SP,
-                            name: Pat::Ident(BindingIdent {
-                                id: Ident::new(const_name.clone().into(), DUMMY_SP, SyntaxContext::empty()),
-                                type_ann: None,
-                            }),
-                            init: Some(Box::new(fn_expr)),
-                            definite: false,
-                        }],
-                    })))));
-                    
+                            ctxt: SyntaxContext::empty(),
+                            kind: VarDeclKind::Const,
+                            declare: false,
+                            decls: vec![VarDeclarator {
+                                span: DUMMY_SP,
+                                name: Pat::Ident(BindingIdent {
+                                    id: Ident::new(
+                                        const_name.clone().into(),
+                                        DUMMY_SP,
+                                        SyntaxContext::empty(),
+                                    ),
+                                    type_ann: None,
+                                }),
+                                init: Some(Box::new(fn_expr)),
+                                definite: false,
+                            }],
+                        })))),
+                    );
+
                     // Insert workflowId assignment after const
-                    items.insert(pos + 1, ModuleItem::Stmt(
-                        self.create_workflow_id_assignment(&const_name, span),
-                    ));
+                    items.insert(
+                        pos + 1,
+                        ModuleItem::Stmt(self.create_workflow_id_assignment(&const_name, span)),
+                    );
 
                     // Insert export default at the end (after workflowId)
                     for (_export_name, replacement_expr) in &default_exports {
-                        items.insert(pos + 2, ModuleItem::ModuleDecl(ModuleDecl::ExportDefaultExpr(
-                            ExportDefaultExpr {
-                                span: DUMMY_SP,
-                                expr: Box::new(replacement_expr.clone()),
-                            },
-                        )));
+                        items.insert(
+                            pos + 2,
+                            ModuleItem::ModuleDecl(ModuleDecl::ExportDefaultExpr(
+                                ExportDefaultExpr {
+                                    span: DUMMY_SP,
+                                    expr: Box::new(replacement_expr.clone()),
+                                },
+                            )),
+                        );
                     }
                 }
             }
@@ -3212,6 +3581,9 @@ impl VisitMut for StepTransform {
                         // Step functions are completely removed in client mode
                         // This will be handled at a higher level
                     }
+                    TransformMode::Graph => {
+                        // No transformation in graph mode
+                    }
                 }
             }
         } else if self.has_workflow_directive(&fn_decl.function, false) {
@@ -3225,6 +3597,7 @@ impl VisitMut for StepTransform {
                 // It's valid - proceed with transformation
                 self.workflow_function_names.insert(fn_name.clone());
 
+                let mut graph_workflow_id: Option<String> = None;
                 match self.mode {
                     TransformMode::Step => {
                         // Workflow functions are not processed in step mode
@@ -3237,7 +3610,25 @@ impl VisitMut for StepTransform {
                         // Workflow functions are transformed in client mode
                         // This will be handled at a higher level
                     }
+                    TransformMode::Graph => {
+                        // Start tracking this workflow in graph mode
+                        let workflow_id =
+                            self.create_id(Some(&fn_name), fn_decl.function.span, true);
+                        graph_workflow_id = Some(workflow_id);
+                        // Set flag so we can detect step calls inside the workflow
+                        self.in_workflow_function = true;
+                    }
                 }
+
+                fn_decl.visit_mut_children_with(self);
+
+                // Finish workflow graph if we started one
+                if let Some(workflow_id) = graph_workflow_id {
+                    self.queue_workflow_graph(&fn_name, &workflow_id, &fn_decl.function);
+                    // Reset the flag
+                    self.in_workflow_function = false;
+                }
+                return;
             }
         }
 
@@ -3314,6 +3705,9 @@ impl VisitMut for StepTransform {
                                 // In client mode, just remove the directive and keep the function as-is
                                 self.remove_use_step_directive(&mut fn_decl.function.body);
                                 export_decl.visit_mut_children_with(self);
+                            }
+                            TransformMode::Graph => {
+                                // No transformation in graph mode
                             }
                         }
                     }
@@ -3394,6 +3788,19 @@ impl VisitMut for StepTransform {
 
                                 self.workflow_functions_needing_id
                                     .push((fn_name.clone(), fn_decl.function.span));
+                            }
+                            TransformMode::Graph => {
+                                let workflow_id =
+                                    self.create_id(Some(&fn_name), fn_decl.function.span, true);
+                                self.in_workflow_function = true;
+                                fn_decl.visit_mut_children_with(self);
+                                self.queue_workflow_graph(
+                                    &fn_name,
+                                    &workflow_id,
+                                    &fn_decl.function,
+                                );
+                                self.in_workflow_function = old_in_workflow;
+                                return;
                             }
                         }
                     }
@@ -3485,6 +3892,9 @@ impl VisitMut for StepTransform {
                                                         &mut fn_expr.function.body,
                                                     );
                                                 }
+                                                TransformMode::Graph => {
+                                                    // No transformation in graph mode
+                                                }
                                             }
                                         }
                                     } else if self
@@ -3567,8 +3977,13 @@ impl VisitMut for StepTransform {
                                                         fn_expr.function.span,
                                                     ));
                                                 }
+                                                TransformMode::Graph => {
+                                                    // No transformation in graph mode
+                                                }
                                             }
                                         }
+
+                                        self.in_workflow_function = old_in_workflow;
                                     }
                                 }
                                 Expr::Arrow(arrow_expr) => {
@@ -3614,6 +4029,9 @@ impl VisitMut for StepTransform {
                                                     self.remove_use_step_directive_arrow(
                                                         &mut arrow_expr.body,
                                                     );
+                                                }
+                                                TransformMode::Graph => {
+                                                    // No transformation in graph mode
                                                 }
                                             }
                                         }
@@ -3699,6 +4117,9 @@ impl VisitMut for StepTransform {
 
                                                     self.workflow_functions_needing_id
                                                         .push((name.clone(), arrow_expr.span));
+                                                }
+                                                TransformMode::Graph => {
+                                                    // No transformation in graph mode
                                                 }
                                             }
                                         }
@@ -3841,6 +4262,9 @@ impl VisitMut for StepTransform {
                                                 &mut fn_expr.function.body,
                                             );
                                         }
+                                        TransformMode::Graph => {
+                                            // No transformation in graph mode
+                                        }
                                     }
                                 }
                             } else if self.has_workflow_directive(&fn_expr.function, false) {
@@ -3900,6 +4324,9 @@ impl VisitMut for StepTransform {
                                             }
                                             self.workflow_functions_needing_id
                                                 .push((name.clone(), fn_expr.function.span));
+                                        }
+                                        TransformMode::Graph => {
+                                            // No transformation in graph mode
                                         }
                                     }
                                 }
@@ -4005,6 +4432,9 @@ impl VisitMut for StepTransform {
                                                     span: DUMMY_SP,
                                                 }));
                                             }
+                                            TransformMode::Graph => {
+                                                // No transformation in graph mode
+                                            }
                                         }
                                     } else {
                                         // Not in a workflow function - handle normally
@@ -4061,6 +4491,9 @@ impl VisitMut for StepTransform {
                                                 self.remove_use_step_directive_arrow(
                                                     &mut arrow_expr.body,
                                                 );
+                                            }
+                                            TransformMode::Graph => {
+                                                // No transformation in graph mode
                                             }
                                         }
                                     }
@@ -4125,6 +4558,9 @@ impl VisitMut for StepTransform {
                                                 }));
                                             self.workflow_functions_needing_id
                                                 .push((name.clone(), arrow_expr.span));
+                                        }
+                                        TransformMode::Graph => {
+                                            // No transformation in graph mode
                                         }
                                     }
                                 }
@@ -4267,14 +4703,16 @@ impl VisitMut for StepTransform {
                         let const_name = if fn_name == "default" {
                             // Anonymous: generate unique name
                             let unique_name = self.generate_unique_name("__default");
-                            self.workflow_export_to_const_name.insert("default".to_string(), unique_name.clone());
+                            self.workflow_export_to_const_name
+                                .insert("default".to_string(), unique_name.clone());
                             unique_name
                         } else {
                             // Named: use the function name
-                            self.workflow_export_to_const_name.insert("default".to_string(), fn_name.clone());
+                            self.workflow_export_to_const_name
+                                .insert("default".to_string(), fn_name.clone());
                             fn_name.clone()
                         };
-                        
+
                         // Always use "default" as the metadata key for default exports
                         self.workflow_function_names.insert("default".to_string());
 
@@ -4294,7 +4732,7 @@ impl VisitMut for StepTransform {
                                         Expr::Fn(fn_expr.clone()),
                                         fn_expr.function.span,
                                     ));
-                                    
+
                                     // Track for replacement with identifier
                                     self.default_exports_to_replace.push((
                                         fn_name.clone(),
@@ -4318,7 +4756,7 @@ impl VisitMut for StepTransform {
                             TransformMode::Client => {
                                 // In client mode, replace workflow function body with error throw
                                 self.remove_use_workflow_directive(&mut fn_expr.function.body);
-                                
+
                                 let error_msg = format!(
                                     "You attempted to execute workflow {} function directly. To start a workflow, use start({}) from workflow/api",
                                     const_name, const_name
@@ -4347,7 +4785,7 @@ impl VisitMut for StepTransform {
                                         arg: Box::new(error_expr),
                                     })];
                                 }
-                                
+
                                 // For anonymous functions, convert to const declaration so we can assign workflowId
                                 if fn_name == "default" {
                                     // Track for const declaration and workflowId assignment
@@ -4356,7 +4794,7 @@ impl VisitMut for StepTransform {
                                         Expr::Fn(fn_expr.clone()),
                                         fn_expr.function.span,
                                     ));
-                                    
+
                                     // Track for replacement with identifier
                                     self.default_exports_to_replace.push((
                                         fn_name.clone(),
@@ -4372,6 +4810,9 @@ impl VisitMut for StepTransform {
                                     self.workflow_functions_needing_id
                                         .push((const_name, fn_expr.function.span));
                                 }
+                            }
+                            TransformMode::Graph => {
+                                // No transformation in graph mode
                             }
                         }
                     }
@@ -4423,6 +4864,9 @@ impl VisitMut for StepTransform {
                                 // Transform step function body to use step run call
                                 self.remove_use_step_directive(&mut fn_expr.function.body);
                             }
+                            TransformMode::Graph => {
+                                // No transformation in graph mode
+                            }
                         }
                     }
                 }
@@ -4445,8 +4889,9 @@ impl VisitMut for StepTransform {
                         // Generate unique name first so we can use it in workflow_function_names
                         let unique_name = self.generate_unique_name("__default");
                         // For function expression default exports, track mapping from "default" to actual const name
-                        self.workflow_export_to_const_name.insert("default".to_string(), unique_name.clone());
-                        
+                        self.workflow_export_to_const_name
+                            .insert("default".to_string(), unique_name.clone());
+
                         // Always use "default" as the metadata key for default exports
                         self.workflow_function_names.insert("default".to_string());
 
@@ -4457,14 +4902,14 @@ impl VisitMut for StepTransform {
                             TransformMode::Workflow => {
                                 // In workflow mode, convert to const declaration
                                 self.remove_use_workflow_directive(&mut fn_expr.function.body);
-                                
+
                                 // Track for const declaration and workflowId assignment
                                 self.default_workflow_exports.push((
                                     unique_name.clone(),
                                     Expr::Fn(fn_expr.clone()),
                                     fn_expr.function.span,
                                 ));
-                                
+
                                 // Track for replacement with identifier
                                 self.default_exports_to_replace.push((
                                     "default".to_string(),
@@ -4506,14 +4951,14 @@ impl VisitMut for StepTransform {
                                         arg: Box::new(error_expr),
                                     })];
                                 }
-                                
+
                                 // Track for const declaration and workflowId assignment
                                 self.default_workflow_exports.push((
                                     unique_name.clone(),
                                     Expr::Fn(fn_expr.clone()),
                                     fn_expr.function.span,
                                 ));
-                                
+
                                 // Track for replacement with identifier
                                 self.default_exports_to_replace.push((
                                     "default".to_string(),
@@ -4523,6 +4968,9 @@ impl VisitMut for StepTransform {
                                         SyntaxContext::empty(),
                                     )),
                                 ));
+                            }
+                            TransformMode::Graph => {
+                                // No transformation in graph mode
                             }
                         }
                     }
@@ -4545,11 +4993,12 @@ impl VisitMut for StepTransform {
                     } else {
                         // For arrow function default exports, generate unique name and track mapping
                         let unique_name = self.generate_unique_name("__default");
-                        self.workflow_export_to_const_name.insert("default".to_string(), unique_name.clone());
-                        
+                        self.workflow_export_to_const_name
+                            .insert("default".to_string(), unique_name.clone());
+
                         // Always use "default" as the metadata key for default exports
                         self.workflow_function_names.insert("default".to_string());
-                        
+
                         match self.mode {
                             TransformMode::Step => {
                                 // Workflow functions are not processed in step mode
@@ -4557,14 +5006,14 @@ impl VisitMut for StepTransform {
                             TransformMode::Workflow => {
                                 // In workflow mode, convert to const declaration
                                 self.remove_use_workflow_directive_arrow(&mut arrow_expr.body);
-                                
+
                                 // Track for const declaration and workflowId assignment
                                 self.default_workflow_exports.push((
                                     unique_name.clone(),
                                     Expr::Arrow(arrow_expr.clone()),
                                     arrow_expr.span,
                                 ));
-                                
+
                                 // Track for replacement with identifier
                                 self.default_exports_to_replace.push((
                                     "default".to_string(),
@@ -4609,14 +5058,14 @@ impl VisitMut for StepTransform {
                                         arg: Box::new(error_expr),
                                     })],
                                 }));
-                                
+
                                 // Track for const declaration and workflowId assignment
                                 self.default_workflow_exports.push((
                                     unique_name.clone(),
                                     Expr::Arrow(arrow_expr.clone()),
                                     arrow_expr.span,
                                 ));
-                                
+
                                 // Track for replacement with identifier
                                 self.default_exports_to_replace.push((
                                     "default".to_string(),
@@ -4626,6 +5075,9 @@ impl VisitMut for StepTransform {
                                         SyntaxContext::empty(),
                                     )),
                                 ));
+                            }
+                            TransformMode::Graph => {
+                                // No transformation in graph mode
                             }
                         }
                     }
@@ -4797,6 +5249,9 @@ impl VisitMut for StepTransform {
                                                             &mut arrow_expr.body,
                                                         );
                                                     }
+                                                    TransformMode::Graph => {
+                                                        // No transformation in graph mode
+                                                    }
                                                 }
                                             }
                                         }
@@ -4866,6 +5321,9 @@ impl VisitMut for StepTransform {
                                                         self.remove_use_step_directive(
                                                             &mut fn_expr.function.body,
                                                         );
+                                                    }
+                                                    TransformMode::Graph => {
+                                                        // No transformation in graph mode
                                                     }
                                                 }
                                             }
@@ -4952,6 +5410,9 @@ impl VisitMut for StepTransform {
                                                 self.remove_use_step_directive(
                                                     &mut method_prop.function.body,
                                                 );
+                                            }
+                                            TransformMode::Graph => {
+                                                // No transformation in graph mode
                                             }
                                         }
                                     }

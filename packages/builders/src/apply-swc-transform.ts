@@ -20,10 +20,38 @@ export type WorkflowManifest = {
   };
 };
 
+export type GraphManifest = {
+  version: string;
+  workflows: {
+    [workflowName: string]: {
+      workflowId: string;
+      workflowName: string;
+      filePath: string;
+      nodes: Array<{
+        id: string;
+        type: string;
+        position: { x: number; y: number };
+        data: {
+          label: string;
+          nodeKind: string;
+          stepId?: string;
+          line: number;
+        };
+      }>;
+      edges: Array<{
+        id: string;
+        source: string;
+        target: string;
+        type: string;
+      }>;
+    };
+  };
+};
+
 export async function applySwcTransform(
   filename: string,
   source: string,
-  mode: 'workflow' | 'step' | 'client' | false,
+  mode: 'workflow' | 'step' | 'client' | 'graph' | false,
   jscConfig?: {
     paths?: Record<string, string[]>;
     // this must be absolute path
@@ -32,6 +60,7 @@ export async function applySwcTransform(
 ): Promise<{
   code: string;
   workflowManifest: WorkflowManifest;
+  graphManifest?: GraphManifest;
 }> {
   // Determine if this is a TypeScript file
   const isTypeScript = filename.endsWith('.ts') || filename.endsWith('.tsx');
@@ -65,12 +94,24 @@ export async function applySwcTransform(
     /\/\*\*__internal_workflows({.*?})\*\//s
   );
 
-  const parsedWorkflows = JSON.parse(
-    workflowCommentMatch?.[1] || '{}'
-  ) as WorkflowManifest;
+  const metadata = JSON.parse(workflowCommentMatch?.[1] || '{}');
+
+  const parsedWorkflows = {
+    steps: metadata.steps,
+    workflows: metadata.workflows,
+  } as WorkflowManifest;
+
+  // Extract graph manifest from separate comment
+  const graphCommentMatch = result.code.match(
+    /\/\*\*__workflow_graph({.*?})\*\//s
+  );
+  const graphManifest = graphCommentMatch?.[1]
+    ? (JSON.parse(graphCommentMatch[1]) as GraphManifest)
+    : undefined;
 
   return {
     code: result.code,
     workflowManifest: parsedWorkflows || {},
+    graphManifest,
   };
 }

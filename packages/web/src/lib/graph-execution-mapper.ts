@@ -1,0 +1,381 @@
+/**
+ * Utilities to map workflow run data to graph execution overlays
+ */
+
+import type { Event, Step, WorkflowRun } from '@workflow/web-shared';
+import type {
+  EdgeTraversal,
+  GraphNode,
+  StepExecution,
+  WorkflowGraph,
+  WorkflowRunExecution,
+} from './workflow-graph-types';
+
+/**
+ * Normalize step/workflow names by removing path traversal patterns
+ * Graph has: "step//../example/workflows/1_simple.ts//add"
+ * Runtime has: "step//example/workflows/1_simple.ts//add"
+ */
+function normalizeStepName(name: string): string {
+  // Remove //../ patterns (path traversal)
+  return name.replace(/\/\/\.\.\//g, '//');
+}
+
+/**
+ * Create execution data for a single step attempt
+ */
+function createStepExecution(
+  attemptStep: Step,
+  graphNodeId: string,
+  idx: number,
+  totalAttempts: number
+): StepExecution {
+  let status: StepExecution['status'] = 'pending';
+  if (attemptStep.status === 'completed') {
+    status = 'completed';
+  } else if (attemptStep.status === 'failed') {
+    status = idx < totalAttempts - 1 ? 'retrying' : 'failed';
+  } else if (attemptStep.status === 'running') {
+    status = 'running';
+  }
+
+  const duration =
+    attemptStep.completedAt && attemptStep.startedAt
+      ? new Date(attemptStep.completedAt).getTime() -
+        new Date(attemptStep.startedAt).getTime()
+      : undefined;
+
+  return {
+    nodeId: graphNodeId,
+    stepId: attemptStep.stepId,
+    attemptNumber: attemptStep.attempt,
+    status,
+    startedAt: attemptStep.startedAt
+      ? new Date(attemptStep.startedAt).toISOString()
+      : undefined,
+    completedAt: attemptStep.completedAt
+      ? new Date(attemptStep.completedAt).toISOString()
+      : undefined,
+    duration,
+    input: attemptStep.input,
+    output: attemptStep.output,
+    error: attemptStep.error
+      ? {
+          message: attemptStep.error.message,
+          stack: attemptStep.error.stack || '',
+        }
+      : undefined,
+  };
+}
+
+/**
+ * Build index of graph nodes by normalized stepId
+ */
+function buildNodeIndex(nodes: GraphNode[]): Map<string, GraphNode[]> {
+  const nodesByStepId = new Map<string, GraphNode[]>();
+  for (const node of nodes) {
+    if (node.data.stepId) {
+      const normalizedStepId = normalizeStepName(node.data.stepId);
+      const existing = nodesByStepId.get(normalizedStepId) || [];
+      existing.push(node);
+      nodesByStepId.set(normalizedStepId, existing);
+    }
+  }
+  return nodesByStepId;
+}
+
+/**
+ * Calculate edge traversals based on execution path
+ */
+function calculateEdgeTraversals(
+  executionPath: string[],
+  graph: WorkflowGraph
+): Map<string, EdgeTraversal> {
+  const edgeTraversals = new Map<string, EdgeTraversal>();
+
+  for (let i = 0; i < executionPath.length - 1; i++) {
+    const sourceNodeId = executionPath[i];
+    const targetNodeId = executionPath[i + 1];
+
+    const edge = graph.edges.find(
+      (e) => e.source === sourceNodeId && e.target === targetNodeId
+    );
+
+    if (edge) {
+      const existing = edgeTraversals.get(edge.id);
+      if (existing) {
+        existing.traversalCount++;
+      } else {
+        edgeTraversals.set(edge.id, {
+          edgeId: edge.id,
+          traversalCount: 1,
+          timings: [],
+        });
+      }
+    }
+  }
+
+  return edgeTraversals;
+}
+
+/**
+ * Initialize start node execution
+ */
+function initializeStartNode(
+  run: WorkflowRun,
+  graph: WorkflowGraph,
+  executionPath: string[],
+  nodeExecutions: Map<string, StepExecution[]>
+): void {
+  const startNode = graph.nodes.find(
+    (n) => n.data.nodeKind === 'workflow_start'
+  );
+  if (startNode) {
+    executionPath.push(startNode.id);
+    nodeExecutions.set(startNode.id, [
+      {
+        nodeId: startNode.id,
+        attemptNumber: 1,
+        status: 'completed',
+        startedAt: run.startedAt
+          ? new Date(run.startedAt).toISOString()
+          : undefined,
+        completedAt: run.startedAt
+          ? new Date(run.startedAt).toISOString()
+          : undefined,
+        duration: 0,
+      },
+    ]);
+  }
+}
+
+/**
+ * Add end node execution if workflow is complete
+ */
+function addEndNodeExecution(
+  run: WorkflowRun,
+  graph: WorkflowGraph,
+  executionPath: string[],
+  nodeExecutions: Map<string, StepExecution[]>
+): void {
+  if (run.status === 'completed' || run.status === 'failed') {
+    const endNode = graph.nodes.find((n) => n.data.nodeKind === 'workflow_end');
+    if (endNode && !executionPath.includes(endNode.id)) {
+      executionPath.push(endNode.id);
+      nodeExecutions.set(endNode.id, [
+        {
+          nodeId: endNode.id,
+          attemptNumber: 1,
+          status: run.status === 'completed' ? 'completed' : 'failed',
+          startedAt: run.completedAt
+            ? new Date(run.completedAt).toISOString()
+            : undefined,
+          completedAt: run.completedAt
+            ? new Date(run.completedAt).toISOString()
+            : undefined,
+          duration: 0,
+        },
+      ]);
+    }
+  }
+}
+
+/**
+ * Process a group of step attempts and map to graph node
+ */
+function processStepGroup(
+  stepGroup: Step[],
+  stepName: string,
+  nodesByStepId: Map<string, GraphNode[]>,
+  occurrenceCount: Map<string, number>,
+  nodeExecutions: Map<string, StepExecution[]>,
+  executionPath: string[]
+): string | undefined {
+  const normalizedStepName = normalizeStepName(stepName);
+  const occurrenceIndex = occurrenceCount.get(normalizedStepName) || 0;
+  occurrenceCount.set(normalizedStepName, occurrenceIndex + 1);
+
+  const nodesWithStepId = nodesByStepId.get(normalizedStepName) || [];
+
+  // If there's only one node for this step but multiple invocations,
+  // map all invocations to that single node
+  const graphNode =
+    nodesWithStepId.length === 1
+      ? nodesWithStepId[0]
+      : nodesWithStepId[occurrenceIndex];
+
+  console.log('[Graph Mapper] Processing step group:', {
+    stepName,
+    normalizedStepName,
+    attempts: stepGroup.length,
+    occurrenceIndex,
+    totalNodesWithStepId: nodesWithStepId.length,
+    selectedNode: graphNode?.id,
+    allNodesWithStepId: nodesWithStepId.map((n) => n.id),
+    strategy:
+      nodesWithStepId.length === 1
+        ? 'single-node-multiple-invocations'
+        : 'occurrence-based',
+  });
+
+  if (!graphNode) {
+    return undefined;
+  }
+
+  const executions: StepExecution[] = stepGroup.map((attemptStep, idx) =>
+    createStepExecution(attemptStep, graphNode.id, idx, stepGroup.length)
+  );
+
+  // If there's only one node, append executions instead of replacing
+  if (nodesWithStepId.length === 1) {
+    const existing = nodeExecutions.get(graphNode.id) || [];
+    nodeExecutions.set(graphNode.id, [...existing, ...executions]);
+  } else {
+    nodeExecutions.set(graphNode.id, executions);
+  }
+
+  if (!executionPath.includes(graphNode.id)) {
+    executionPath.push(graphNode.id);
+  }
+
+  const latestExecution = executions[executions.length - 1];
+  return latestExecution.status === 'running' ? graphNode.id : undefined;
+}
+
+/**
+ * Maps a workflow run and its steps/events to an execution overlay for the graph
+ */
+export function mapRunToExecution(
+  run: WorkflowRun,
+  steps: Step[],
+  _events: Event[],
+  graph: WorkflowGraph
+): WorkflowRunExecution {
+  const nodeExecutions = new Map<string, StepExecution[]>();
+  const executionPath: string[] = [];
+  let currentNode: string | undefined;
+
+  console.log('[Graph Mapper] Mapping run to execution:', {
+    runId: run.runId,
+    workflowName: run.workflowName,
+    graphNodes: graph.nodes.length,
+    stepsCount: steps.length,
+  });
+
+  // Start node is always executed first
+  initializeStartNode(run, graph, executionPath, nodeExecutions);
+
+  // Map steps to graph nodes
+  // Sort steps by createdAt to process in execution order
+  const sortedSteps = [...steps].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
+
+  console.log(
+    '[Graph Mapper] Sorted steps:',
+    sortedSteps.map((s) => ({
+      stepId: s.stepId,
+      stepName: s.stepName,
+      attempt: s.attempt,
+      status: s.status,
+      createdAt: s.createdAt,
+    }))
+  );
+
+  // Build an index of graph nodes by normalized stepId for quick lookup
+  const nodesByStepId = buildNodeIndex(graph.nodes);
+
+  console.log('[Graph Mapper] Graph nodes by stepId:', {
+    allGraphNodes: graph.nodes.map((n) => ({
+      id: n.id,
+      stepId: n.data.stepId,
+      normalizedStepId: n.data.stepId
+        ? normalizeStepName(n.data.stepId)
+        : undefined,
+      nodeKind: n.data.nodeKind,
+    })),
+    nodesByStepId: Array.from(nodesByStepId.entries()).map(
+      ([stepId, nodes]) => ({
+        stepId,
+        nodeIds: nodes.map((n) => n.id),
+      })
+    ),
+  });
+
+  // Track how many times we've seen each stepName to map to the correct occurrence
+  const stepNameOccurrenceCount = new Map<string, number>();
+
+  // Group consecutive retries: steps with the same stepId (unique per invocation) are retries
+  let currentStepGroup: Step[] = [];
+  let currentStepId: string | null = null;
+  let currentStepName: string | null = null;
+
+  for (let i = 0; i <= sortedSteps.length; i++) {
+    const step = sortedSteps[i];
+
+    // Start a new group if:
+    // 1. Different stepId (each invocation has a unique stepId, retries share the same stepId)
+    // 2. End of array
+    const isNewInvocation = !step || step.stepId !== currentStepId;
+
+    if (isNewInvocation) {
+      // Process the previous group if it exists
+      if (currentStepGroup.length > 0 && currentStepName) {
+        const runningNode = processStepGroup(
+          currentStepGroup,
+          currentStepName,
+          nodesByStepId,
+          stepNameOccurrenceCount,
+          nodeExecutions,
+          executionPath
+        );
+        if (runningNode) {
+          currentNode = runningNode;
+        }
+      }
+
+      // Start a new group with current step (if not at end)
+      if (step) {
+        currentStepGroup = [step];
+        currentStepId = step.stepId;
+        currentStepName = step.stepName;
+      }
+    } else {
+      // Add to current group (this is a retry: same stepId)
+      currentStepGroup.push(step);
+    }
+  }
+
+  // Add end node if workflow is completed/failed
+  addEndNodeExecution(run, graph, executionPath, nodeExecutions);
+
+  // Calculate edge traversals based on execution path
+  const edgeTraversals = calculateEdgeTraversals(executionPath, graph);
+
+  // Map run status to execution status (filter out unsupported statuses)
+  const executionStatus: WorkflowRunExecution['status'] =
+    run.status === 'paused' ? 'running' : run.status;
+
+  const result: WorkflowRunExecution = {
+    runId: run.runId,
+    status: executionStatus,
+    nodeExecutions,
+    edgeTraversals,
+    currentNode,
+    executionPath,
+  };
+
+  console.log('[Graph Mapper] Mapping complete:', {
+    executionPath,
+    nodeExecutionsCount: nodeExecutions.size,
+    nodeExecutions: Array.from(nodeExecutions.entries()).map(
+      ([nodeId, execs]) => ({
+        nodeId,
+        executionCount: execs.length,
+        latestStatus: execs[execs.length - 1]?.status,
+      })
+    ),
+  });
+
+  return result;
+}

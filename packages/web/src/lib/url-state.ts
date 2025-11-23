@@ -57,3 +57,10 @@ export function useEventIdState() {
 export function useStreamIdState() {
   return useQueryState('streamId', parseAsString);
 }
+
+/**
+ * Hook to manage selected workflow ID for graph visualization
+ */
+export function useWorkflowIdState() {
+  return useQueryState('workflowId', parseAsString);
+}

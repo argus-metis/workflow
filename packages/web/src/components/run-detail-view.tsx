@@ -8,7 +8,7 @@ import {
   type WorkflowRun,
   WorkflowTraceViewer,
 } from '@workflow/web-shared';
-import { AlertCircle, ChevronLeft, Loader2 } from 'lucide-react';
+import { AlertCircle, ChevronLeft, List, Loader2, Network } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -24,8 +24,12 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { WorkflowGraphExecutionViewer } from '@/components/workflow-graph-execution-viewer';
 import { buildUrlWithConfig, worldConfigToEnvMap } from '@/lib/config';
 import type { WorldConfig } from '@/lib/config-world';
+import { mapRunToExecution } from '@/lib/graph-execution-mapper';
+import { useWorkflowGraphManifest } from '@/lib/use-workflow-graph';
 import { CancelButton } from './display-utils/cancel-button';
 import { CopyableText } from './display-utils/copyable-text';
 import { LiveStatus } from './display-utils/live-status';
@@ -51,7 +55,15 @@ export function RunDetailView({
   const [rerunning, setRerunning] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [showRerunDialog, setShowRerunDialog] = useState(false);
+  const [activeTab, setActiveTab] = useState<'trace' | 'graph'>('trace');
   const env = useMemo(() => worldConfigToEnvMap(config), [config]);
+
+  // Fetch workflow graph manifest
+  const {
+    manifest: graphManifest,
+    loading: graphLoading,
+    error: graphError,
+  } = useWorkflowGraphManifest(config);
 
   // Fetch all run data with live updates
   const {
@@ -65,6 +77,30 @@ export function RunDetailView({
     update,
   } = useWorkflowTraceViewerData(env, runId, { live: true });
   const run = runData ?? ({} as WorkflowRun);
+
+  // Find the workflow graph for this run
+  const workflowGraph = useMemo(() => {
+    if (!graphManifest || !run.workflowName) return null;
+
+    // Try to find by exact workflowName match first
+    const workflow = Object.values(graphManifest.workflows).find((w) =>
+      run.workflowName.includes(w.workflowName)
+    );
+
+    return workflow || null;
+  }, [graphManifest, run.workflowName]);
+
+  // Map run data to execution overlay
+  const execution = useMemo(() => {
+    if (!workflowGraph || !run.runId) return null;
+
+    return mapRunToExecution(
+      run,
+      allSteps || [],
+      allEvents || [],
+      workflowGraph
+    );
+  }, [workflowGraph, run, allSteps, allEvents]);
 
   const handleCancelClick = () => {
     setShowCancelDialog(true);
@@ -313,15 +349,77 @@ export function RunDetailView({
         </div>
 
         <div className="flex-1 min-h-0 relative">
-          <WorkflowTraceViewer
-            error={error}
-            steps={allSteps}
-            events={allEvents}
-            hooks={allHooks}
-            env={env}
-            run={run}
-            isLoading={loading}
-          />
+          <Tabs
+            value={activeTab}
+            onValueChange={(v) => setActiveTab(v as 'trace' | 'graph')}
+            className="h-full flex flex-col"
+          >
+            <TabsList className="flex-none">
+              <TabsTrigger value="trace" className="gap-2">
+                <List className="h-4 w-4" />
+                Trace
+              </TabsTrigger>
+              <TabsTrigger value="graph" className="gap-2">
+                <Network className="h-4 w-4" />
+                Graph
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent
+              value="trace"
+              className="flex-1 min-h-0 mt-0 data-[state=active]:flex data-[state=active]:flex-col"
+            >
+              <WorkflowTraceViewer
+                error={error}
+                steps={allSteps}
+                events={allEvents}
+                hooks={allHooks}
+                env={env}
+                run={run}
+                isLoading={loading}
+              />
+            </TabsContent>
+
+            <TabsContent
+              value="graph"
+              className="flex-1 min-h-0 mt-0 data-[state=active]:flex"
+            >
+              {graphLoading ? (
+                <div className="flex items-center justify-center w-full h-full">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  <span className="ml-4 text-muted-foreground">
+                    Loading workflow graph...
+                  </span>
+                </div>
+              ) : graphError ? (
+                <div className="flex items-center justify-center w-full h-full p-4">
+                  <Alert variant="destructive" className="max-w-lg">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Error Loading Workflow Graph</AlertTitle>
+                    <AlertDescription>{graphError.message}</AlertDescription>
+                  </Alert>
+                </div>
+              ) : !workflowGraph ? (
+                <div className="flex items-center justify-center w-full h-full">
+                  <Alert className="max-w-lg">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Workflow Graph Not Found</AlertTitle>
+                    <AlertDescription>
+                      Could not find the workflow graph for this run. The
+                      workflow may have been deleted or the graph manifest may
+                      need to be regenerated.
+                    </AlertDescription>
+                  </Alert>
+                </div>
+              ) : (
+                <WorkflowGraphExecutionViewer
+                  workflow={workflowGraph}
+                  execution={execution || undefined}
+                />
+              )}
+            </TabsContent>
+          </Tabs>
+
           {auxiliaryDataLoading && (
             <div className="absolute flex items-center justify-center left-4 bottom-4">
               <Loader2 className="size-4 animate-spin" />

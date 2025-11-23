@@ -13,6 +13,7 @@ export class StandaloneBuilder extends BaseBuilder {
     await this.buildStepsBundle(options);
     await this.buildWorkflowsBundle(options);
     await this.buildWebhookFunction();
+    await this.buildGraphManifest(options);
 
     await this.createClientLibrary();
   }
@@ -74,6 +75,26 @@ export class StandaloneBuilder extends BaseBuilder {
 
     await this.createWebhookBundle({
       outfile: webhookBundlePath,
+    });
+  }
+
+  private async buildGraphManifest({
+    inputFiles,
+    tsPaths,
+    tsBaseUrl,
+  }: {
+    inputFiles: string[];
+    tsBaseUrl?: string;
+    tsPaths?: Record<string, string[]>;
+  }): Promise<void> {
+    const graphManifestPath = this.resolvePath('.swc/graph-manifest.json');
+    await this.ensureDirectory(graphManifestPath);
+
+    await this.createGraphManifest({
+      inputFiles,
+      outfile: graphManifestPath,
+      tsBaseUrl,
+      tsPaths,
     });
   }
 }

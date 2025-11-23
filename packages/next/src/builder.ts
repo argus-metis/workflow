@@ -46,6 +46,20 @@ export async function getNextBuilder() {
       const stepsBuildContext = await this.buildStepsFunction(options);
       const workflowsBundle = await this.buildWorkflowsFunction(options);
       await this.buildWebhookRoute({ workflowGeneratedDir });
+
+      // Write graph manifest to workflow data directory
+      const workflowDataDir = join(
+        this.config.workingDir,
+        '.next/workflow-data'
+      );
+      await mkdir(workflowDataDir, { recursive: true });
+      await this.createGraphManifest({
+        inputFiles: options.inputFiles,
+        outfile: join(workflowDataDir, 'graph-manifest.json'),
+        tsBaseUrl: options.tsBaseUrl,
+        tsPaths: options.tsPaths,
+      });
+
       await this.writeFunctionsConfig(outputDir);
 
       if (this.config.watch) {
@@ -166,6 +180,23 @@ export async function getNextBuilder() {
             );
           }
           workflowsCtx = newWorkflowsCtx;
+
+          // Rebuild graph manifest to workflow data directory
+          try {
+            const workflowDataDir = join(
+              this.config.workingDir,
+              '.next/workflow-data'
+            );
+            await mkdir(workflowDataDir, { recursive: true });
+            await this.createGraphManifest({
+              inputFiles: options.inputFiles,
+              outfile: join(workflowDataDir, 'graph-manifest.json'),
+              tsBaseUrl: options.tsBaseUrl,
+              tsPaths: options.tsPaths,
+            });
+          } catch (error) {
+            console.error('Failed to rebuild graph manifest:', error);
+          }
         };
 
         const logBuildMessages = (
@@ -220,6 +251,23 @@ export async function getNextBuilder() {
             'Rebuilt workflow bundle',
             `${Date.now() - rebuiltWorkflowStart}ms`
           );
+
+          // Rebuild graph manifest to workflow data directory
+          try {
+            const workflowDataDir = join(
+              this.config.workingDir,
+              '.next/workflow-data'
+            );
+            await mkdir(workflowDataDir, { recursive: true });
+            await this.createGraphManifest({
+              inputFiles: options.inputFiles,
+              outfile: join(workflowDataDir, 'graph-manifest.json'),
+              tsBaseUrl: options.tsBaseUrl,
+              tsPaths: options.tsPaths,
+            });
+          } catch (error) {
+            console.error('Failed to rebuild graph manifest:', error);
+          }
         };
 
         const isWatchableFile = (path: string) =>
