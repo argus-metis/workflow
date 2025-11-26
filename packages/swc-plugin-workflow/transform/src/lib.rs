@@ -4693,7 +4693,7 @@ impl VisitMut for StepTransform {
                                 fn_expr.visit_mut_children_with(self);
                                 self.current_parent_function_name = old_parent;
                                 self.in_module_level = old_in_module;
-                                return; // Skip the general visit_mut_children_with at the end
+                                // Continue to next declarator (don't return early)
                             }
                         }
                         Expr::Arrow(arrow_expr) => {
@@ -4964,7 +4964,7 @@ impl VisitMut for StepTransform {
                                 arrow_expr.visit_mut_children_with(self);
                                 self.current_parent_function_name = old_parent;
                                 self.in_module_level = old_in_module;
-                                return; // Skip the general visit_mut_children_with at the end
+                                // Continue to next declarator (don't return early)
                             }
                         }
                         Expr::Object(obj_lit) => {
