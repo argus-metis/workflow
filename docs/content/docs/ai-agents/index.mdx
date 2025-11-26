@@ -2,10 +2,6 @@
 title: Building Durable AI Agents
 ---
 
-<Callout type="warn">
-`@workflow/ai` is in public beta and should be considered experimental.
-</Callout>
-
 AI agents are built on the primitive of LLM and tool-call loops, often with additional processes for data fetching, resource provisioning, or reacting to external events. Workflow DevKit allows you to designate these loops as stateful, resumable workflows, with LLM calls, tool calls, and other async operations as individual, retryable, observable steps.
 
 This guide walks through converting a basic AI SDK agent into a durable agent using Workflow DevKit.
@@ -14,12 +10,11 @@ This guide walks through converting a basic AI SDK agent into a durable agent us
 
 Building production-ready AI agents typically requires solving several challenges:
 
-- **Durability**: Queue management, tracking sub-jobs, and handling task execution across failures
+- **Durability**: Splitting calls into async jobs, managing associated workers, queuing, and data persistence
 - **Reliability**: Error handling, retries, and recovery from partial failures
-- **Observability**: Storing messages, emitting traces, and debugging agent behavior
-- **Resumability**: Persisting state to a database, managing stream providers for reconnection
-- **Long-running operations**: Sleep, delays, and month-long workflows without idle costs
-- **Human approval loops**: Queues, async workers, and database-backed state management
+- **Observability**: Storing messages and emitting traces, often using external services for observability
+- **Resumability**: Repeatedly persisting and loading state from a database, storing streams in a separate service, and managing stream reconnects
+- **Long-running operations and human approval loops**: Wiring up queues, async workers, and connecting state to your existing API and interface
 
 Workflow DevKit provides these capabilities out of the box. Your agent becomes a workflow, your tools become steps, and the framework handles interplay with your existing infrastructure.
 

@@ -2,15 +2,12 @@
 title: Resumable Streams
 ---
 
-<Callout type="warn">
-The `@workflow/ai` package is currently in active development and should be considered experimental.
-</Callout>
-
 When building chat interfaces, network interruptions or page refreshes can break the connection to an in-progress agent. Workflow DevKit provides [`WorkflowChatTransport`](/docs/api-reference/workflow-ai/workflow-chat-transport), a drop-in transport for the AI SDK that enables automatic stream reconnection.
 
 ## The Problem
 
 A typical chat application loses state when:
+
 - The user refreshes the page during a response
 - Network connectivity drops temporarily
 - Serverless function timeouts occur mid-stream
@@ -20,6 +17,7 @@ With a standard chat implementation, users must resend their message and wait fo
 ## The Solution
 
 `WorkflowChatTransport` solves this by:
+
 1. Tracking the workflow run ID returned from your API
 2. Automatically reconnecting to the stream from the last received chunk
 3. Storing the run ID for session resumption across page loads
@@ -184,6 +182,7 @@ const { messages, sendMessage } = useChat({
 ```
 
 When the user refreshes the page:
+
 1. The component checks localStorage for an active run ID
 2. If found, `resume: true` triggers a reconnection attempt
 3. The transport fetches the stream from the last known position
@@ -207,4 +206,3 @@ The transport automatically retries reconnection on network errors. After reachi
 - [`WorkflowChatTransport` API Reference](/docs/api-reference/workflow-ai/workflow-chat-transport) - Full configuration options
 - [Streaming](/docs/foundations/streaming) - Understanding workflow streams
 - [`getRun()` API Reference](/docs/api-reference/workflow-api/get-run) - Retrieving existing runs
-
