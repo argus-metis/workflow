@@ -14,6 +14,7 @@ import { CopyPage } from '@/components/geistdocs/copy-page';
 import { EditSource } from '@/components/geistdocs/edit-source';
 import { Feedback } from '@/components/geistdocs/feedback';
 import { getMDXComponents } from '@/components/geistdocs/mdx-components';
+import { AgentTraces } from '@/components/guides/agent-traces';
 import { OpenInChat } from '@/components/geistdocs/open-in-chat';
 import { ScrollTop } from '@/components/geistdocs/scroll-top';
 import { TableOfContents } from '@/components/geistdocs/toc';
@@ -81,6 +82,7 @@ const Page = async (props: PageProps<'/guides/[[...slug]]'>) => {
             a: createRelativeLink(guidesSource, page),
 
             // Add your custom components here
+            AgentTraces,
             Badge,
             TSDoc,
             Step,
