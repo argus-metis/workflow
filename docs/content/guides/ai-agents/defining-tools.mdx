@@ -2,15 +2,11 @@
 title: Defining Tool Calls
 ---
 
-Tools are the primary way AI agents interact with the outside world. In Workflow DevKit, tools can be implemented as workflow steps for automatic retries and persistence, or they can use workflow-level primitives like `sleep()` and webhooks. This guide covers the patterns and best practices for defining tools in durable agents.
+In Workflow DevKit, tools usually defined as [steps](/docs/foundations/workflows-and-steps). Since steps run in isolation, `DurableAgent` provides common abstractions for giving steps access to tool context. There are also some cases where tools might run inside the workflow context, as opposed to the step context, e.g. when using `sleep()` or `createWebhook()`. This guide covers the patterns and best practices for defining tools in durable agents.
 
-## Tool Structure
+## Tool Structure and Context
 
-Every tool has three key parts:
-
-1. **Input Schema** - A Zod schema defining what the LLM can pass to the tool
-2. **Description** - A natural language description helping the LLM decide when to use the tool
-3. **Execute Function** - The logic that runs when the tool is called
+Workflow DevKit uses the same abstraction for tools as the AI SDK, see [the AI SDK documentation on tools](https://ai-sdk.dev/docs/foundations/tools). Here's an example tool definition:
 
 ```typescript title="ai/tools/search-web.ts" lineNumbers
 import { tool } from 'ai';
@@ -29,29 +25,14 @@ export const searchWeb = tool({
 });
 ```
 
-## The Execute Function Context
-
-The execute function receives two arguments:
+Tools passed to `DurableAgent` are invoked with additional context. Every `execute` function receives two arguments:
 
 1. **Input** - The validated input matching your schema
 2. **Options** - Context about the tool call, including:
    - `toolCallId` - Unique identifier for this invocation
-   - `messages` - The conversation history up to and including this tool call
+   - `messages` - The full conversation history up to and including this tool call
 
-```typescript lineNumbers
-execute: async (input, options) => {
-  const { toolCallId, messages } = options;
-  
-  // toolCallId: Use for correlating stream chunks with this tool call
-  // messages: Access the full conversation context
-  
-  return result;
-}
-```
-
-## Accessing Conversation Messages
-
-Tools can access the full conversation history through the `messages` option. This is useful when your tool needs context about what was discussed:
+This allows tools to access the full conversation history through the `messages` option, which is useful when your tool needs context about what was discussed:
 
 ```typescript title="ai/tools/summarize-conversation.ts" lineNumbers
 import { tool } from 'ai';
@@ -83,11 +64,6 @@ export const summarizeConversation = tool({
   },
 });
 ```
-
-The messages follow the `LanguageModelV2Prompt` format from the AI SDK, which includes:
-- User messages with text and file content
-- Assistant messages with text and tool calls
-- Tool result messages from previous tool executions
 
 ## Streaming from Tools
 
@@ -122,6 +98,7 @@ async function emitProgress(
   writer.releaseLock();
 }
 ```
+
 </Step>
 
 <Step>
@@ -143,6 +120,7 @@ async function executeSearchWeb(
   return results;
 }
 ```
+
 </Step>
 
 </Steps>
@@ -269,7 +247,7 @@ When emitting data chunks, use descriptive type names that your UI can handle:
 await writer.write({
   id: toolCallId,
   type: 'data-run-command',  // Custom type
-  data: { 
+  data: {
     command: 'npm install',
     cwd: '/project',
   },
@@ -278,7 +256,7 @@ await writer.write({
 await writer.write({
   id: toolCallId,
   type: 'data-file-created',  // Another custom type
-  data: { 
+  data: {
     path: '/project/package.json',
     size: 1234,
   },
@@ -320,4 +298,3 @@ The UI handles these custom types by checking the part type:
 - [Streaming](/docs/foundations/streaming) - How streaming works in Workflow DevKit
 - [Workflows and Steps](/docs/foundations/workflows-and-steps) - Understanding the execution model
 - [`DurableAgent` API Reference](/docs/api-reference/workflow-ai/durable-agent) - Complete API documentation
-
