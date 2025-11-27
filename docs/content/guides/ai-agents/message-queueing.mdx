@@ -2,9 +2,13 @@
 title: Queueing User Messages
 ---
 
+import { AgentTraces } from '@/components/guides/agent-traces';
+
 In some scenarios, you want to queue new messages into an ongoing AI agent conversation. For example, when a user sends follow-up messages while the agent is still processing, or when external events need to influence the conversation mid-stream.
 
 Workflow DevKit's [`createWebhook()`](/docs/api-reference/workflow/create-webhook) enables this pattern: creating a webhook that can be called multiple times, iterating over incoming requests, and continuing the agent conversation with each new message.
+
+<AgentTraces variant="message-queue" />
 
 ## How It Works
 
