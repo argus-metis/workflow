@@ -12,19 +12,19 @@ This guide walks you through converting a basic AI SDK agent into a durable agen
 
 ## Why Durable Agents?
 
-Aside from the usual challenges of getting your long-running tasks to be production-ready, building mature AI agents typically requires solving several additional **challenges**:
+Aside from the usual challenges of getting your long-running tasks to be production-ready, building mature AI agents typically requires solving several **additional challenges**:
 
-- **Durability**: Persisting chat sessions and turning all LLM and tool calls into separate async jobs, with workers, queues, and state management, which repeatedly save and re-load state from a database.
-- **Observability**: Using services to collect traces and metrics, separately storing your messages and user history, and then combining them to get a complete picture of your agent's behavior.
-- **Resumability**: Separately from storing messages for replayability, most LLM calls are streams, and recovering from a call failure without re-doing the entire call requires piping and storing streams separately from your messages, usually in a separate service.
-- **Human-in-the-loop**: Your client, API, and async job orchestration need to work together to create, track, route to, and display human approval requests, or similar webhook operations. If your stack is disjointed, this simple feature becomes a major orchestration challenge.
+- **Statefulness**: Persisting chat sessions and turning LLM and tool calls into async jobs with workers and queues.
+- **Observability**: Using services to collect traces and metrics, and managing them separately from your messages and user history.
+- **Resumability**: Resuming streams requires not just storing your messages, but also storing streams, and piping them across services.
+- **Human-in-the-loop**: Your client, API, and async job orchestration need to work together to create, track, route to, and display human approval requests, or similar webhook operations.
 
 Workflow DevKit provides all of these capabilities out of the box. Your agent becomes a workflow, your tools become steps, and the framework handles interplay with your existing infrastructure.
 
 ## Getting Started
 
-We start out with a basic Next.js application using the AI SDK's `Agent` class,
-which is a simple wrapper around AI SDK's `streamText` function. It comes with a simple tool for reading web pages.
+We start out with a basic Next.js application using the [AI SDK's `Agent` class](https://ai-sdk.dev/docs/agents/overview),
+which is a simple wrapper around [AI SDK's `streamText` function](https://ai-sdk.dev/docs/reference/ai-sdk-core/stream-text#streamtext). It comes with a simple tool for reading web pages.
 
 <Tabs items={['API Route', 'Tools', 'Client']}>
 
@@ -128,7 +128,7 @@ Add the Workflow DevKit packages to your project:
 npm i workflow @workflow/ai
 ```
 
-and extend the NextJS compiler to transform the code:
+and extend the NextJS config to transform the your workflow code:
 
 ```typescript title="next.config.ts" lineNumbers
 import { withWorkflow } from 'workflow/next';
@@ -358,9 +358,11 @@ export function Chat() {
 
 </Steps>
 
-## Running the Workflow
+That's all you need to do to convert your basic AI SDK agent into a durable agent. If you run your development server, and send a chat message, you should see your agent respond just as before, but now with added durability and observability.
 
-Run your development server, then open the observability dashboard to see your workflow in action:
+## Observability
+
+In your app directory, you can open up the observability dashboard to see your workflow in action, using the CLI:
 
 ```bash
 npx workflow web
@@ -368,19 +370,25 @@ npx workflow web
 
 This opens a local dashboard showing all workflow runs and their status, as well as a trace viewer to inspect the workflow in detail, including retry attempts, and the data being passed between steps.
 
+If you'd like to have terminal interface instead, you can use the CLI directly:
+
+```bash
+npx workflow inspect runs
+```
+
 ## Next Steps
 
-Now that you have a basic durable agent, explore these additional features:
+Now that you have a basic durable agent, it's a only a short step to add these additional features:
 
 <Cards>
   <Card title="Resumable Streams" href="/guides/ai-agents/resumable-streams">
     Enable clients to reconnect to interrupted streams without losing data.
   </Card>
   <Card title="Sleep and Delays" href="/guides/ai-agents/sleep-and-delays">
-    Add native sleep functionality for time-based workflows.
+    Add native sleep and scheduling functionality to your Agent and workflow.
   </Card>
   <Card title="Human-in-the-Loop" href="/guides/ai-agents/human-in-the-loop">
-    Implement approval workflows that wait for human input.
+    Implement approval steps to wait for human input or external events.
   </Card>
 </Cards>
 
