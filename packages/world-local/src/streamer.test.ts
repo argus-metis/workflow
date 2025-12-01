@@ -130,7 +130,6 @@ describe('streamer', () => {
     describe('writeToStream', () => {
       it('should write string chunks to a stream', async () => {
         const { testDir, streamer } = await setupStreamer();
-        const runId = 'wrun_test123';
         const streamName = 'test-stream';
 
         await streamer.writeToStream(streamName, TEST_RUN_ID, 'hello');
@@ -147,7 +146,6 @@ describe('streamer', () => {
 
       it('should write Buffer chunks to a stream', async () => {
         const { testDir, streamer } = await setupStreamer();
-        const runId = 'wrun_test123';
         const streamName = 'buffer-stream';
         const buffer1 = Buffer.from('chunk1');
         const buffer2 = Buffer.from('chunk2');
@@ -164,7 +162,6 @@ describe('streamer', () => {
 
       it('should write Uint8Array chunks to a stream', async () => {
         const { testDir, streamer } = await setupStreamer();
-        const runId = 'wrun_test123';
         const streamName = 'uint8-stream';
         const uint8Array = new Uint8Array([1, 2, 3, 4]);
 
@@ -179,7 +176,6 @@ describe('streamer', () => {
 
       it('should handle multiple streams independently', async () => {
         const { testDir, streamer } = await setupStreamer();
-        const runId = 'wrun_test123';
 
         await streamer.writeToStream('stream1', TEST_RUN_ID, 'data1');
         await streamer.writeToStream('stream2', TEST_RUN_ID, 'data2');
@@ -412,7 +408,6 @@ describe('streamer', () => {
         // Run multiple iterations to increase probability of catching race conditions
         for (let iteration = 0; iteration < 10; iteration++) {
           const { streamer } = await setupStreamer();
-          const runId = 'wrun_test123';
           const streamName = `race-${iteration}`;
 
           // Write a few chunks to disk first
@@ -477,7 +472,6 @@ describe('streamer', () => {
 
       it('should maintain chronological order when chunks arrive during disk reading', async () => {
         const { streamer } = await setupStreamer();
-        const runId = 'wrun_test123';
         const streamName = 'ordering-test';
 
         // Write chunks 0-4 to disk

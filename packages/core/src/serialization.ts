@@ -337,7 +337,6 @@ function getCommonReducers(global: Record<string, any> = globalThis) {
  *
  * @param global
  * @param ops
- * @param runId
  * @returns
  */
 export function getExternalReducers(
@@ -959,8 +958,7 @@ export function hydrateWorkflowReturnValue(
   ops: Promise<void>[],
   runId: string | Promise<string>,
   global: Record<string, any> = globalThis,
-  extraRevivers: Record<string, (value: any) => any> = {},
-  runId?: string
+  extraRevivers: Record<string, (value: any) => any> = {}
 ) {
   const obj = devalue.unflatten(value, {
     ...getExternalRevivers(global, ops, runId),
@@ -1009,8 +1007,7 @@ export function hydrateStepArguments(
   ops: Promise<any>[],
   runId: string | Promise<string>,
   global: Record<string, any> = globalThis,
-  extraRevivers: Record<string, (value: any) => any> = {},
-  runId?: string
+  extraRevivers: Record<string, (value: any) => any> = {}
 ) {
   const obj = devalue.unflatten(value, {
     ...getStepRevivers(global, ops, runId),
@@ -1060,8 +1057,7 @@ export function dehydrateStepReturnValue(
 export function hydrateStepReturnValue(
   value: Parameters<typeof devalue.unflatten>[0],
   global: Record<string, any> = globalThis,
-  extraRevivers: Record<string, (value: any) => any> = {},
-  _runId?: string
+  extraRevivers: Record<string, (value: any) => any> = {}
 ) {
   const obj = devalue.unflatten(value, {
     ...getWorkflowRevivers(global),
