@@ -41,6 +41,7 @@ Add a tool that allows the agent to deliberately pause execution until a human a
 <Steps>
 
 <Step>
+
 ### Define the Hook
 
 Create a typed hook with a Zod schema for validation:
@@ -60,6 +61,7 @@ export const bookingApprovalHook = defineHook({
 </Step>
 
 <Step>
+
 ### Implement the Tool
 
 Create a tool that creates a hook instance using the tool call ID as the token. The UI will use this ID to submit the approval.
@@ -105,6 +107,7 @@ Note that the `defineHook().create()` function must be called from within a work
 </Step>
 
 <Step>
+
 ### Create the API Route
 
 Create an API endpoint that the UI will call to submit the approval decision:
@@ -115,20 +118,14 @@ import { bookingApprovalHook } from '@/workflows/chat/hooks/booking-approval';
 export async function POST(request: Request) {
   const { toolCallId, approved, comment } = await request.json();
 
-  try {
-    // Schema validation happens automatically // [!code highlight]
-    await bookingApprovalHook.resume(toolCallId, { // [!code highlight]
-      approved,
-      comment,
-    });
+  // Schema validation happens automatically // [!code highlight]
+  // Can throw a zod schema validation error, or a
+  await bookingApprovalHook.resume(toolCallId, { // [!code highlight]
+    approved,
+    comment,
+  });
 
-    return Response.json({ success: true });
-  } catch (error) {
-    return Response.json(
-      { error: 'Invalid token or validation failed' },
-      { status: 400 }
-    );
-  }
+  return Response.json({ success: true });
 }
 ```
 
@@ -182,7 +179,7 @@ export default function ChatPage() {
                         return ( // [!code highlight]
                           <BookingApproval // [!code highlight]
                             key={partIndex} // [!code highlight]
-                            toolCallId={part.id} // [!code highlight]
+                            toolCallId={part.toolCallId} // [!code highlight]
                             input={part.input} // [!code highlight]
                             output={part.output} // [!code highlight]
                           /> // [!code highlight]
