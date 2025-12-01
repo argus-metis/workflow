@@ -237,6 +237,7 @@ export default withWorkflow(nextConfig);
 </Step>
 
 <Step>
+
 ### Create a Workflow Function
 
 Move the agent logic into a separate function, which will serve as our workflow definition.
@@ -248,27 +249,20 @@ import { stepCountIs } from 'ai';
 import { tools } from '@/ai/tools';
 import type { ModelMessage, UIMessageChunk } from 'ai';
 
-export async function chatWorkflow({
-  messages,
-  modelId,
-}: {
-  messages: ModelMessage[];
-  modelId: string;
-}) {
+export async function chatWorkflow(messages: ModelMessage[]) {
   'use workflow'; // [!code highlight]
 
   const writable = getWritable<UIMessageChunk>(); // [!code highlight]
 
   const agent = new DurableAgent({ // [!code highlight]
-    model: modelId,
-    system: 'You are a helpful assistant.',
-    tools: tools(),
+    model: 'bedrock/claude-4-5-haiku-20251001-v1',
+    system: FLIGHT_ASSISTANT_PROMPT,
+    tools: flightBookingTools,
   });
 
   await agent.stream({ // [!code highlight]
     messages,
     writable,
-    stopWhen: stepCountIs(20),
   });
 }
 ```
