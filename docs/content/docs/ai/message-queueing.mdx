@@ -4,7 +4,7 @@ title: Queueing User Messages
 
 When using [multi-turn workflows](/guides/ai/chat-session-modeling#multi-turn-workflows), messages typically arrive between agent turns. The workflow waits at a hook, receives a message, then starts a new turn. But sometimes you need to inject messages *during* an agent's turn, before tool calls complete or while the model is reasoning.
 
-`DurableAgent`'s `prepareStep` callback enables this by running before each step in the agent loop, giving you a chance to inject queued messages into the conversation.
+`DurableAgent`'s `prepareStep` callback enables this by running before each step in the agent loop, giving you a chance to inject queued messages into the conversation. `prepareStep` also allows you to modify the model choice and existing messages mid-turn, see AI SDK's [prepareStep callback](https://ai-sdk.dev/docs/ai-sdk-core/tools-and-tool-calling#preparestep-callback) for more details.
 
 ## When to Use This
 
@@ -93,38 +93,6 @@ Messages sent via `chatMessageHook.resume()` accumulate in the queue and get inj
 <Callout type="info">
 The `prepareStep` callback receives messages in `LanguageModelV2Prompt` format (with content arrays), which is the internal format used by the AI SDK.
 </Callout>
-
-## Other `prepareStep` Patterns
-
-Beyond message injection, `prepareStep` supports other per-step modifications:
-
-**Context Management**: Trim old messages to stay within context limits:
-
-```typescript lineNumbers
-prepareStep: ({ messages }) => {
-  if (messages.length > 20) {
-    return {
-      messages: [
-        messages[0],            // Keep system message
-        ...messages.slice(-10), // Keep last 10 messages
-      ],
-    };
-  }
-  return {};
-}
-```
-
-**Dynamic Model Selection**: Switch models based on conversation complexity:
-
-```typescript lineNumbers
-prepareStep: ({ stepNumber, messages }) => {
-  // Use a stronger model for complex multi-step operations
-  if (stepNumber > 2 && messages.length > 10) {
-    return { model: 'bedrock/claude-4-sonnet-20250514-v1' };
-  }
-  return {};
-}
-```
 
 ## Related Documentation
 
