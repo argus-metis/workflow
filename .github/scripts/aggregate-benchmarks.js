@@ -3,10 +3,22 @@
 const fs = require('fs');
 const path = require('path');
 
-const [, , resultsDir = '.'] = process.argv;
+// Parse command line arguments
+const args = process.argv.slice(2);
+let resultsDir = '.';
+let baselineDir = null;
 
-// Backend display config
-const backendConfig = {
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--baseline' && args[i + 1]) {
+    baselineDir = args[i + 1];
+    i++;
+  } else if (!args[i].startsWith('--')) {
+    resultsDir = args[i];
+  }
+}
+
+// World display config
+const worldConfig = {
   local: { emoji: '💻', label: 'Local' },
   postgres: { emoji: '🐘', label: 'Postgres' },
   vercel: { emoji: '▲', label: 'Vercel' },
@@ -15,13 +27,33 @@ const backendConfig = {
 // Framework display config
 const frameworkConfig = {
   'nextjs-turbopack': { label: 'Next.js (Turbopack)' },
-  nitro: { label: 'Nitro' },
+  'nitro-v3': { label: 'Nitro' },
   express: { label: 'Express' },
 };
 
 // Format milliseconds as seconds
 function formatSec(ms, decimals = 3) {
   return (ms / 1000).toFixed(decimals);
+}
+
+// Format delta between current and baseline values
+// Returns string like "+12.3%" (slower) or "-5.2%" (faster) or "" if no baseline
+function formatDelta(current, baseline) {
+  if (
+    baseline === null ||
+    baseline === undefined ||
+    current === null ||
+    current === undefined
+  ) {
+    return '';
+  }
+  const percentChange = ((current - baseline) / baseline) * 100;
+  if (Math.abs(percentChange) < 0.5) {
+    return ' (~)';
+  }
+  const sign = percentChange > 0 ? '+' : '';
+  const emoji = percentChange > 5 ? ' 🔺' : percentChange < -5 ? ' 🟢' : '';
+  return ` (${sign}${percentChange.toFixed(1)}%${emoji})`;
 }
 
 // Find all benchmark result files
@@ -75,7 +107,7 @@ function loadTimingData(benchmarkFile) {
 
 // Collect all benchmark data
 function collectBenchmarkData(resultFiles) {
-  // Structure: { [benchmarkName]: { [app]: { [backend]: { wallTime, workflowTime, overhead, min, max, samples } } } }
+  // Structure: { [benchmarkName]: { [app]: { [backend]: { wallTime, workflowTime, overhead, min, max, samples, firstByteTime } } } }
   const data = {};
 
   for (const file of resultFiles) {
@@ -107,8 +139,13 @@ function collectBenchmarkData(resultFiles) {
 
             // Get workflow timing if available
             let workflowTimeMs = null;
+            let firstByteTimeMs = null;
             if (timings?.summary?.[benchName]) {
               workflowTimeMs = timings.summary[benchName].avgExecutionTimeMs;
+              // Get TTFB for stream benchmarks
+              if (timings.summary[benchName].avgFirstByteTimeMs !== undefined) {
+                firstByteTimeMs = timings.summary[benchName].avgFirstByteTimeMs;
+              }
             }
 
             data[benchName][app][backend] = {
@@ -119,6 +156,7 @@ function collectBenchmarkData(resultFiles) {
               min: bench.min,
               max: bench.max,
               samples: bench.sampleCount,
+              firstByteTime: firstByteTimeMs,
             };
           }
         }
@@ -159,8 +197,155 @@ function getAppsAndBackends(data) {
   return { apps: sortedApps, backends: sortedBackends };
 }
 
+// Check if a benchmark has TTFB data (is a stream benchmark)
+function isStreamBenchmark(benchData, apps, backends) {
+  for (const app of apps) {
+    for (const backend of backends) {
+      if (benchData[app]?.[backend]?.firstByteTime !== null) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Render a single benchmark table
+function renderBenchmarkTable(
+  benchName,
+  benchData,
+  baselineBenchData,
+  apps,
+  backends,
+  isStream
+) {
+  console.log(`## ${benchName}\n`);
+
+  // Collect all data points (including missing ones) for all app/backend combinations
+  const dataPoints = [];
+  const validDataPoints = [];
+  for (const app of apps) {
+    for (const backend of backends) {
+      const metrics = benchData[app]?.[backend];
+      const baseline = baselineBenchData?.[app]?.[backend] || null;
+      const dataPoint = { app, backend, metrics: metrics || null, baseline };
+      dataPoints.push(dataPoint);
+      if (metrics) {
+        validDataPoints.push(dataPoint);
+      }
+    }
+  }
+
+  if (validDataPoints.length === 0) {
+    console.log('_No data available_\n');
+    return;
+  }
+
+  // Sort valid data points by workflow time for ranking
+  validDataPoints.sort((a, b) => {
+    const aTime = a.metrics.workflowTime ?? a.metrics.wallTime;
+    const bTime = b.metrics.workflowTime ?? b.metrics.wallTime;
+    return aTime - bTime;
+  });
+  const fastest = validDataPoints[0];
+  const fastestTime = fastest.metrics.workflowTime ?? fastest.metrics.wallTime;
+
+  // Sort all data points: valid ones first (by time), then missing ones
+  dataPoints.sort((a, b) => {
+    // Missing data goes to the end
+    if (!a.metrics && !b.metrics) return 0;
+    if (!a.metrics) return 1;
+    if (!b.metrics) return -1;
+    // Valid data sorted by time
+    const aTime = a.metrics.workflowTime ?? a.metrics.wallTime;
+    const bTime = b.metrics.workflowTime ?? b.metrics.wallTime;
+    return aTime - bTime;
+  });
+
+  // Render table - different columns for stream vs regular benchmarks
+  if (isStream) {
+    console.log(
+      '| World | Framework | Workflow Time | TTFB | Wall Time | Overhead | vs Fastest |'
+    );
+    console.log(
+      '|:------|:----------|--------------:|-----:|----------:|---------:|-----------:|'
+    );
+  } else {
+    console.log(
+      '| World | Framework | Workflow Time | Wall Time | Overhead | vs Fastest |'
+    );
+    console.log(
+      '|:------|:----------|--------------:|----------:|---------:|-----------:|'
+    );
+  }
+
+  for (const { app, backend, metrics, baseline } of dataPoints) {
+    const worldInfo = worldConfig[backend] || {
+      emoji: '',
+      label: backend,
+    };
+    const frameworkInfo = frameworkConfig[app] || { label: app };
+
+    // Handle missing data
+    if (!metrics) {
+      if (isStream) {
+        console.log(
+          `| ${worldInfo.emoji} ${worldInfo.label} | ${frameworkInfo.label} | ⚠️ _missing_ | - | - | - | - |`
+        );
+      } else {
+        console.log(
+          `| ${worldInfo.emoji} ${worldInfo.label} | ${frameworkInfo.label} | ⚠️ _missing_ | - | - | - |`
+        );
+      }
+      continue;
+    }
+
+    const isFastest = metrics === fastest.metrics;
+    const medal = isFastest ? '🥇 ' : '';
+
+    // Format workflow time with delta
+    const workflowTimeSec =
+      metrics.workflowTime !== null ? formatSec(metrics.workflowTime) : '-';
+    const workflowDelta = formatDelta(
+      metrics.workflowTime,
+      baseline?.workflowTime
+    );
+
+    // Format wall time with delta
+    const wallTimeSec = formatSec(metrics.wallTime);
+    const wallDelta = formatDelta(metrics.wallTime, baseline?.wallTime);
+
+    // Format overhead (no delta needed, it's derived)
+    const overheadSec =
+      metrics.overhead !== null ? formatSec(metrics.overhead) : '-';
+
+    // Format TTFB with delta for stream benchmarks
+    const firstByteSec =
+      metrics.firstByteTime !== null ? formatSec(metrics.firstByteTime) : '-';
+    const ttfbDelta = formatDelta(
+      metrics.firstByteTime,
+      baseline?.firstByteTime
+    );
+
+    const currentTime = metrics.workflowTime ?? metrics.wallTime;
+    const factor = isFastest
+      ? '1.00x'
+      : `${(currentTime / fastestTime).toFixed(2)}x`;
+
+    if (isStream) {
+      console.log(
+        `| ${worldInfo.emoji} ${worldInfo.label} | ${medal}${frameworkInfo.label} | ${workflowTimeSec}s${workflowDelta} | ${firstByteSec}s${ttfbDelta} | ${wallTimeSec}s${wallDelta} | ${overheadSec}s | ${factor} |`
+      );
+    } else {
+      console.log(
+        `| ${worldInfo.emoji} ${worldInfo.label} | ${medal}${frameworkInfo.label} | ${workflowTimeSec}s${workflowDelta} | ${wallTimeSec}s${wallDelta} | ${overheadSec}s | ${factor} |`
+      );
+    }
+  }
+  console.log('');
+}
+
 // Render the comparison tables
-function renderComparison(data) {
+function renderComparison(data, baselineData) {
   const { apps, backends } = getAppsAndBackends(data);
 
   if (Object.keys(data).length === 0) {
@@ -168,165 +353,189 @@ function renderComparison(data) {
     return;
   }
 
-  console.log('# 📊 Benchmark Comparison\n');
-  console.log(
-    'Cross-matrix comparison of workflow performance across frameworks and backends.\n'
-  );
+  console.log('<!-- benchmark-results -->\n');
+  console.log('## 📊 Benchmark Results\n');
 
-  // For each benchmark, create a comparison table
-  for (const [benchName, benchData] of Object.entries(data)) {
-    console.log(`## ${benchName}\n`);
-
-    // Collect all data points with their wall times for ranking
-    const dataPoints = [];
-    for (const app of apps) {
-      for (const backend of backends) {
-        const metrics = benchData[app]?.[backend];
-        if (metrics) {
-          dataPoints.push({ app, backend, metrics });
-        }
-      }
-    }
-
-    if (dataPoints.length === 0) {
-      console.log('_No data available_\n');
-      continue;
-    }
-
-    // Sort by workflow time (primary metric), fall back to wall time if workflow time unavailable
-    dataPoints.sort((a, b) => {
-      const aTime = a.metrics.workflowTime ?? a.metrics.wallTime;
-      const bTime = b.metrics.workflowTime ?? b.metrics.wallTime;
-      return aTime - bTime;
-    });
-    const fastest = dataPoints[0];
-    const fastestTime =
-      fastest.metrics.workflowTime ?? fastest.metrics.wallTime;
-
-    // Render table - Workflow Time is primary metric
+  // Show baseline comparison note if baseline data is available
+  if (baselineData && Object.keys(baselineData).length > 0) {
     console.log(
-      '| Backend | Framework | Workflow Time | Wall Time | Overhead | vs Fastest |'
+      '> 📈 _Comparing against baseline from `main` branch. Green 🟢 = faster, Red 🔺 = slower._\n'
     );
-    console.log(
-      '|:--------|:----------|--------------:|----------:|---------:|-----------:|'
-    );
-
-    for (const { app, backend, metrics } of dataPoints) {
-      const backendInfo = backendConfig[backend] || {
-        emoji: '',
-        label: backend,
-      };
-      const frameworkInfo = frameworkConfig[app] || { label: app };
-
-      const isFastest = metrics === fastest.metrics;
-      const medal = isFastest ? '🥇 ' : '';
-
-      const workflowTimeSec =
-        metrics.workflowTime !== null ? formatSec(metrics.workflowTime) : '-';
-      const wallTimeSec = formatSec(metrics.wallTime);
-      const overheadSec =
-        metrics.overhead !== null ? formatSec(metrics.overhead) : '-';
-
-      const currentTime = metrics.workflowTime ?? metrics.wallTime;
-      const factor = isFastest
-        ? '1.00x'
-        : `${(currentTime / fastestTime).toFixed(2)}x`;
-
-      console.log(
-        `| ${backendInfo.emoji} ${backendInfo.label} | ${medal}${frameworkInfo.label} | ${workflowTimeSec}s | ${wallTimeSec}s | ${overheadSec}s | ${factor} |`
-      );
-    }
-    console.log('');
   }
 
-  // Summary: Best framework per backend (by Workflow Time)
-  console.log('## Summary: Fastest Framework by Backend\n');
-  console.log('| Backend | Fastest Framework | Workflow Time |');
-  console.log('|:--------|:------------------|---------------:|');
+  // Separate benchmarks into regular and stream categories
+  const regularBenchmarks = [];
+  const streamBenchmarks = [];
 
-  for (const backend of backends) {
-    const backendInfo = backendConfig[backend] || { emoji: '', label: backend };
-    let fastestApp = null;
-    let fastestTime = Infinity;
+  for (const [benchName, benchData] of Object.entries(data)) {
+    if (isStreamBenchmark(benchData, apps, backends)) {
+      streamBenchmarks.push([benchName, benchData]);
+    } else {
+      regularBenchmarks.push([benchName, benchData]);
+    }
+  }
 
-    // Average workflow time across all benchmarks for this backend
-    const appTotals = {};
-    const appCounts = {};
+  // Render regular benchmarks first
+  if (regularBenchmarks.length > 0) {
+    for (const [benchName, benchData] of regularBenchmarks) {
+      const baselineBenchData = baselineData?.[benchName] || null;
+      renderBenchmarkTable(
+        benchName,
+        benchData,
+        baselineBenchData,
+        apps,
+        backends,
+        false
+      );
+    }
+  }
 
-    for (const benchData of Object.values(data)) {
+  // Render stream benchmarks in a separate section
+  if (streamBenchmarks.length > 0) {
+    console.log('---\n');
+    console.log('### Stream Benchmarks\n');
+    console.log(
+      '_Stream benchmarks include Time to First Byte (TTFB) metrics._\n'
+    );
+
+    for (const [benchName, benchData] of streamBenchmarks) {
+      const baselineBenchData = baselineData?.[benchName] || null;
+      renderBenchmarkTable(
+        benchName,
+        benchData,
+        baselineBenchData,
+        apps,
+        backends,
+        true
+      );
+    }
+  }
+
+  // Summary: Count wins per framework (within each world) and per world (within each framework)
+  const allBenchmarks = [...regularBenchmarks, ...streamBenchmarks];
+
+  // Count wins: for each world, which framework wins most benchmarks
+  const frameworkWinsByWorld = {}; // { backend: { app: count } }
+  // Count wins: for each framework, which world wins most benchmarks
+  const worldWinsByFramework = {}; // { app: { backend: count } }
+
+  for (const [benchName, benchData] of allBenchmarks) {
+    // For each world, find the fastest framework
+    for (const backend of backends) {
+      let fastestApp = null;
+      let fastestTime = Infinity;
+
       for (const app of apps) {
         const metrics = benchData[app]?.[backend];
         if (metrics) {
           const time = metrics.workflowTime ?? metrics.wallTime;
-          appTotals[app] = (appTotals[app] || 0) + time;
-          appCounts[app] = (appCounts[app] || 0) + 1;
+          if (time < fastestTime) {
+            fastestTime = time;
+            fastestApp = app;
+          }
         }
+      }
+
+      if (fastestApp) {
+        if (!frameworkWinsByWorld[backend]) {
+          frameworkWinsByWorld[backend] = {};
+        }
+        frameworkWinsByWorld[backend][fastestApp] =
+          (frameworkWinsByWorld[backend][fastestApp] || 0) + 1;
       }
     }
 
+    // For each framework, find the fastest world
     for (const app of apps) {
-      if (appCounts[app] > 0) {
-        const avgTime = appTotals[app] / appCounts[app];
-        if (avgTime < fastestTime) {
-          fastestTime = avgTime;
-          fastestApp = app;
+      let fastestBackend = null;
+      let fastestTime = Infinity;
+
+      for (const backend of backends) {
+        const metrics = benchData[app]?.[backend];
+        if (metrics) {
+          const time = metrics.workflowTime ?? metrics.wallTime;
+          if (time < fastestTime) {
+            fastestTime = time;
+            fastestBackend = backend;
+          }
         }
+      }
+
+      if (fastestBackend) {
+        if (!worldWinsByFramework[app]) {
+          worldWinsByFramework[app] = {};
+        }
+        worldWinsByFramework[app][fastestBackend] =
+          (worldWinsByFramework[app][fastestBackend] || 0) + 1;
+      }
+    }
+  }
+
+  // Summary: Best framework per world (by wins)
+  console.log('---\n');
+  console.log('## Summary: Fastest Framework by World\n');
+  console.log(`_Winner determined by most benchmark wins_\n`);
+  console.log('| World | 🥇 Fastest Framework | Wins |');
+  console.log('|:------|:---------------------|-----:|');
+
+  for (const backend of backends) {
+    const worldInfo = worldConfig[backend] || { emoji: '', label: backend };
+    const frameworkWins = frameworkWinsByWorld[backend] || {};
+
+    // Find framework with most wins
+    let bestApp = null;
+    let bestWins = 0;
+    for (const [app, wins] of Object.entries(frameworkWins)) {
+      if (wins > bestWins) {
+        bestWins = wins;
+        bestApp = app;
       }
     }
 
-    if (fastestApp) {
-      const frameworkInfo = frameworkConfig[fastestApp] || {
-        label: fastestApp,
-      };
+    if (bestApp) {
+      const frameworkInfo = frameworkConfig[bestApp] || { label: bestApp };
+      // Count total benchmarks for this world (benchmarks that have data for this world)
+      const totalForWorld = allBenchmarks.filter(([, bd]) =>
+        apps.some((a) => bd[a]?.[backend])
+      ).length;
       console.log(
-        `| ${backendInfo.emoji} ${backendInfo.label} | ${frameworkInfo.label} | ${formatSec(fastestTime)}s (avg) |`
+        `| ${worldInfo.emoji} ${worldInfo.label} | ${frameworkInfo.label} | ${bestWins}/${totalForWorld} |`
       );
     }
   }
   console.log('');
 
-  // Summary: Best backend per framework (by Workflow Time)
-  console.log('## Summary: Fastest Backend by Framework\n');
-  console.log('| Framework | Fastest Backend | Workflow Time |');
-  console.log('|:----------|:----------------|---------------:|');
+  // Summary: Best world per framework (by wins)
+  console.log('## Summary: Fastest World by Framework\n');
+  console.log(`_Winner determined by most benchmark wins_\n`);
+  console.log('| Framework | 🥇 Fastest World | Wins |');
+  console.log('|:----------|:-----------------|-----:|');
 
   for (const app of apps) {
     const frameworkInfo = frameworkConfig[app] || { label: app };
-    let fastestBackend = null;
-    let fastestTime = Infinity;
+    const worldWins = worldWinsByFramework[app] || {};
 
-    // Average workflow time across all benchmarks for this app
-    const backendTotals = {};
-    const backendCounts = {};
-
-    for (const benchData of Object.values(data)) {
-      for (const backend of backends) {
-        const metrics = benchData[app]?.[backend];
-        if (metrics) {
-          const time = metrics.workflowTime ?? metrics.wallTime;
-          backendTotals[backend] = (backendTotals[backend] || 0) + time;
-          backendCounts[backend] = (backendCounts[backend] || 0) + 1;
-        }
+    // Find world with most wins
+    let bestBackend = null;
+    let bestWins = 0;
+    for (const [backend, wins] of Object.entries(worldWins)) {
+      if (wins > bestWins) {
+        bestWins = wins;
+        bestBackend = backend;
       }
     }
 
-    for (const backend of backends) {
-      if (backendCounts[backend] > 0) {
-        const avgTime = backendTotals[backend] / backendCounts[backend];
-        if (avgTime < fastestTime) {
-          fastestTime = avgTime;
-          fastestBackend = backend;
-        }
-      }
-    }
-
-    if (fastestBackend) {
-      const backendInfo = backendConfig[fastestBackend] || {
+    if (bestBackend) {
+      const worldInfo = worldConfig[bestBackend] || {
         emoji: '',
-        label: fastestBackend,
+        label: bestBackend,
       };
+      // Count total benchmarks for this framework (benchmarks that have data for this framework)
+      const totalForFramework = allBenchmarks.filter(([, bd]) =>
+        backends.some((b) => bd[app]?.[b])
+      ).length;
       console.log(
-        `| ${frameworkInfo.label} | ${backendInfo.emoji} ${backendInfo.label} | ${formatSec(fastestTime)}s (avg) |`
+        `| ${frameworkInfo.label} | ${worldInfo.emoji} ${worldInfo.label} | ${bestWins}/${totalForFramework} |`
       );
     }
   }
@@ -339,6 +548,9 @@ function renderComparison(data) {
     '- **Workflow Time**: Runtime reported by workflow (completedAt - createdAt) - *primary metric*'
   );
   console.log(
+    '- **TTFB**: Time to First Byte - time from workflow start until first stream byte received (stream benchmarks only)'
+  );
+  console.log(
     '- **Wall Time**: Total testbench time (trigger workflow + poll for result)'
   );
   console.log('- **Overhead**: Testbench overhead (Wall Time - Workflow Time)');
@@ -346,10 +558,10 @@ function renderComparison(data) {
     '- **vs Fastest**: How much slower compared to the fastest configuration for this benchmark'
   );
   console.log('');
-  console.log('**Backends:**');
-  console.log('- 💻 Local: In-memory filesystem backend');
-  console.log('- 🐘 Postgres: PostgreSQL database backend');
-  console.log('- ▲ Vercel: Vercel production backend');
+  console.log('**Worlds:**');
+  console.log('- 💻 Local: In-memory filesystem world');
+  console.log('- 🐘 Postgres: PostgreSQL database world');
+  console.log('- ▲ Vercel: Vercel production world');
   console.log('</details>');
 }
 
@@ -362,4 +574,14 @@ if (resultFiles.length === 0) {
 }
 
 const data = collectBenchmarkData(resultFiles);
-renderComparison(data);
+
+// Load baseline data if provided
+let baselineData = null;
+if (baselineDir) {
+  const baselineFiles = findBenchmarkFiles(baselineDir);
+  if (baselineFiles.length > 0) {
+    baselineData = collectBenchmarkData(baselineFiles);
+  }
+}
+
+renderComparison(data, baselineData);
