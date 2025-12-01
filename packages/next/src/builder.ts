@@ -48,16 +48,11 @@ export async function getNextBuilder() {
       const workflowsBundle = await this.buildWorkflowsFunction(options);
       await this.buildWebhookRoute({ workflowGeneratedDir });
 
-      // Write workflows manifest to workflow data directory (post-bundle extraction)
-      const workflowDataDir = join(
-        this.config.workingDir,
-        '.next/workflow-data'
-      );
-      await mkdir(workflowDataDir, { recursive: true });
+      // Write unified manifest to workflow generated directory
       const workflowBundlePath = join(workflowGeneratedDir, 'flow/route.js');
-      await this.createWorkflowsManifest({
+      await this.createManifest({
         workflowBundlePath,
-        outfile: join(workflowDataDir, 'workflows.json'),
+        manifestDir: workflowGeneratedDir,
       });
 
       await this.writeFunctionsConfig(outputDir);
@@ -182,23 +177,18 @@ export async function getNextBuilder() {
           }
           workflowsCtx = newWorkflowsCtx;
 
-          // Rebuild graph manifest to workflow data directory
+          // Rebuild unified manifest
           try {
-            const workflowDataDir = join(
-              this.config.workingDir,
-              '.next/workflow-data'
-            );
-            await mkdir(workflowDataDir, { recursive: true });
             const workflowBundlePath = join(
               workflowGeneratedDir,
               'flow/route.js'
             );
-            await this.createWorkflowsManifest({
+            await this.createManifest({
               workflowBundlePath,
-              outfile: join(workflowDataDir, 'workflows.json'),
+              manifestDir: workflowGeneratedDir,
             });
           } catch (error) {
-            console.error('Failed to rebuild graph manifest:', error);
+            console.error('Failed to rebuild manifest:', error);
           }
         };
 
@@ -255,23 +245,18 @@ export async function getNextBuilder() {
             `${Date.now() - rebuiltWorkflowStart}ms`
           );
 
-          // Rebuild graph manifest to workflow data directory (post-bundle extraction)
+          // Rebuild unified manifest
           try {
-            const workflowDataDir = join(
-              this.config.workingDir,
-              '.next/workflow-data'
-            );
-            await mkdir(workflowDataDir, { recursive: true });
             const workflowBundlePath = join(
               workflowGeneratedDir,
               'flow/route.js'
             );
-            await this.createWorkflowsManifest({
+            await this.createManifest({
               workflowBundlePath,
-              outfile: join(workflowDataDir, 'workflows.json'),
+              manifestDir: workflowGeneratedDir,
             });
           } catch (error) {
-            console.error('Failed to rebuild graph manifest:', error);
+            console.error('Failed to rebuild manifest:', error);
           }
         };
 

@@ -69,5 +69,12 @@ export class LocalBuilder extends BaseBuilder {
       outfile: webhookRouteFile,
       bundle: false,
     });
+
+    // Generate manifest
+    const workflowBundlePath = join(this.#outDir, 'workflows.mjs');
+    await this.createManifest({
+      workflowBundlePath,
+      manifestDir: this.#outDir,
+    });
   }
 }

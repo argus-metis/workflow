@@ -60,6 +60,13 @@ export class SvelteKitBuilder extends BaseBuilder {
     await this.buildStepsRoute(options);
     await this.buildWorkflowsRoute(options);
     await this.buildWebhookRoute({ workflowGeneratedDir });
+
+    // Generate unified manifest
+    const workflowBundlePath = join(workflowGeneratedDir, 'flow/+server.js');
+    await this.createManifest({
+      workflowBundlePath,
+      manifestDir: workflowGeneratedDir,
+    });
   }
 
   private async buildStepsRoute({

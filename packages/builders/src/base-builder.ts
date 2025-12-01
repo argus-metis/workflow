@@ -12,6 +12,7 @@ import { createDiscoverEntriesPlugin } from './discover-entries-esbuild-plugin.j
 import { createNodeModuleErrorPlugin } from './node-module-esbuild-plugin.js';
 import { createSwcPlugin } from './swc-esbuild-plugin.js';
 import type { WorkflowConfig } from './types.js';
+import { extractWorkflowGraphs } from './workflows-extractor.js';
 
 const enhancedResolve = promisify(enhancedResolveOriginal);
 
@@ -381,16 +382,6 @@ export abstract class BaseBuilder {
     this.logEsbuildMessages(stepsResult, 'steps bundle creation');
     console.log('Created steps bundle', `${Date.now() - stepsBundleStart}ms`);
 
-    const partialWorkflowManifest = {
-      steps: workflowManifest.steps,
-    };
-    // always write to debug file
-    await this.writeDebugFile(
-      join(dirname(outfile), 'manifest'),
-      partialWorkflowManifest,
-      true
-    );
-
     // Create .gitignore in .swc directory
     await this.createSwcGitignore();
 
@@ -508,16 +499,6 @@ export abstract class BaseBuilder {
     console.log(
       'Created intermediate workflow bundle',
       `${Date.now() - bundleStartTime}ms`
-    );
-
-    const partialWorkflowManifest = {
-      workflows: workflowManifest.workflows,
-    };
-
-    await this.writeDebugFile(
-      join(dirname(outfile), 'manifest'),
-      partialWorkflowManifest,
-      true
     );
 
     if (this.config.workflowManifestPath) {
@@ -849,44 +830,104 @@ export const OPTIONS = handler;`;
   }
 
   /**
-   * Creates a workflows manifest JSON file by extracting from the bundled workflow file.
-   * The manifest contains React Flow-compatible graph data for visualizing workflows.
+   * Creates a manifest JSON file containing step/workflow metadata
+   * and graph data for visualization.
    */
-  protected async createWorkflowsManifest({
+  protected async createManifest({
     workflowBundlePath,
-    outfile,
+    manifestDir,
   }: {
     workflowBundlePath: string;
-    outfile: string;
+    manifestDir: string;
   }): Promise<void> {
     const buildStart = Date.now();
-    console.log('Creating workflows manifest...');
+    console.log('Creating manifest...');
 
     try {
-      // Import the graph extractor
-      const { extractGraphFromBundle } = await import(
-        './workflows-extractor.js'
+      const workflowGraphs = await extractWorkflowGraphs(workflowBundlePath);
+      const source = this.lastWorkflowManifest || {};
+
+      const steps = this.convertStepsManifest(source.steps);
+      const workflows = this.convertWorkflowsManifest(
+        source.workflows,
+        workflowGraphs
       );
 
-      // Extract graph from the bundled workflow file
-      const workflowsManifest =
-        await extractGraphFromBundle(workflowBundlePath);
+      const manifest = { version: '1.0.0', steps, workflows };
 
-      // Write the workflows manifest
-      await this.ensureDirectory(outfile);
-      await writeFile(outfile, JSON.stringify(workflowsManifest, null, 2));
+      await mkdir(manifestDir, { recursive: true });
+      await writeFile(
+        join(manifestDir, 'manifest.json'),
+        JSON.stringify(manifest, null, 2)
+      );
+
+      const stepCount = Object.values(steps).reduce(
+        (acc, s) => acc + Object.keys(s).length,
+        0
+      );
+      const workflowCount = Object.values(workflows).reduce(
+        (acc, w) => acc + Object.keys(w).length,
+        0
+      );
 
       console.log(
-        `Created workflows manifest with ${
-          Object.keys(workflowsManifest.workflows).length
-        } workflow(s)`,
+        `Created manifest with ${stepCount} step(s) and ${workflowCount} workflow(s)`,
         `${Date.now() - buildStart}ms`
       );
     } catch (error) {
       console.warn(
-        'Failed to extract workflows from bundle:',
+        'Failed to create manifest:',
         error instanceof Error ? error.message : String(error)
       );
     }
+  }
+
+  private convertStepsManifest(
+    steps: WorkflowManifest['steps']
+  ): Record<string, Record<string, { stepId: string }>> {
+    const result: Record<string, Record<string, { stepId: string }>> = {};
+    if (!steps) return result;
+
+    for (const [filePath, entries] of Object.entries(steps)) {
+      result[filePath] = {};
+      for (const [name, data] of Object.entries(entries)) {
+        result[filePath][name] = { stepId: data.stepId };
+      }
+    }
+    return result;
+  }
+
+  private convertWorkflowsManifest(
+    workflows: WorkflowManifest['workflows'],
+    graphs: Record<
+      string,
+      Record<string, { graph: { nodes: any[]; edges: any[] } }>
+    >
+  ): Record<
+    string,
+    Record<
+      string,
+      { workflowId: string; graph: { nodes: any[]; edges: any[] } }
+    >
+  > {
+    const result: Record<
+      string,
+      Record<
+        string,
+        { workflowId: string; graph: { nodes: any[]; edges: any[] } }
+      >
+    > = {};
+    if (!workflows) return result;
+
+    for (const [filePath, entries] of Object.entries(workflows)) {
+      result[filePath] = {};
+      for (const [name, data] of Object.entries(entries)) {
+        result[filePath][name] = {
+          workflowId: data.workflowId,
+          graph: graphs[filePath]?.[name]?.graph || { nodes: [], edges: [] },
+        };
+      }
+    }
+    return result;
   }
 }

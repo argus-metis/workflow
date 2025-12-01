@@ -14,9 +14,13 @@ export class StandaloneBuilder extends BaseBuilder {
     await this.buildWorkflowsBundle(options);
     await this.buildWebhookFunction();
 
-    // Build workflows manifest from workflow bundle (post-bundle extraction)
+    // Build unified manifest from workflow bundle
     const workflowBundlePath = this.resolvePath('.swc/workflows.js');
-    await this.buildWorkflowsManifest({ workflowBundlePath });
+    const manifestDir = this.resolvePath('.swc');
+    await this.createManifest({
+      workflowBundlePath,
+      manifestDir,
+    });
 
     await this.createClientLibrary();
   }
@@ -80,20 +84,6 @@ export class StandaloneBuilder extends BaseBuilder {
 
     await this.createWebhookBundle({
       outfile: webhookBundlePath,
-    });
-  }
-
-  private async buildWorkflowsManifest({
-    workflowBundlePath,
-  }: {
-    workflowBundlePath: string;
-  }): Promise<void> {
-    const workflowsManifestPath = this.resolvePath('.swc/workflows.json');
-    await this.ensureDirectory(workflowsManifestPath);
-
-    await this.createWorkflowsManifest({
-      workflowBundlePath,
-      outfile: workflowsManifestPath,
     });
   }
 }

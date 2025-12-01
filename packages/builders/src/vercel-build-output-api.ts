@@ -25,6 +25,13 @@ export class VercelBuildOutputAPIBuilder extends BaseBuilder {
     await this.buildWebhookFunction(options);
     await this.createBuildOutputConfig(outputDir);
 
+    // Generate unified manifest
+    const workflowBundlePath = join(workflowGeneratedDir, 'flow.func/index.js');
+    await this.createManifest({
+      workflowBundlePath,
+      manifestDir: workflowGeneratedDir,
+    });
+
     await this.createClientLibrary();
   }
 
