@@ -5,8 +5,8 @@
     "streaming-updates-from-tools",
     "resumable-streams",
     "sleep-and-delays",
-    "defining-tools",
     "human-in-the-loop",
+    "defining-tools",
     "chat-session-modeling",
     "message-queueing"
   ],
