@@ -94,7 +94,7 @@ export function withWorkflow(
       // loaders in webpack apply bottom->up so ensure
       // ours comes before the default swc transform
       webpackConfig.module.rules.push({
-        test: /.*\.(mjs|cjs|cts|ts|tsx|js|jsx)$/,
+        test: /\.(mjs|cjs|cts|ts|tsx|js|jsx)$/,
         loader: loaderPath,
       });
 

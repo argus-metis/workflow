@@ -60,6 +60,8 @@ export default async function workflowLoader(
     relativeFilename = normalizedFilepath.split('/').pop() || 'unknown.ts';
   }
 
+  const isJsx = isTsx || filename.endsWith('.jsx');
+
   // Transform with SWC
   const result = await transform(normalizedSource, {
     filename: relativeFilename,
@@ -67,8 +69,14 @@ export default async function workflowLoader(
       parser: {
         syntax: isTypeScript ? 'typescript' : 'ecmascript',
         tsx: isTsx,
+        jsx: !isTypeScript && isJsx,
       },
       target: 'es2022',
+      transform: {
+        react: {
+          runtime: 'automatic',
+        },
+      },
       experimental: {
         plugins: [
           [require.resolve('@workflow/swc-plugin'), { mode: 'client' }],
