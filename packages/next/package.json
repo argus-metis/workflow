@@ -32,13 +32,14 @@
     "@workflow/core": "workspace:*",
     "@workflow/swc-plugin": "workspace:*",
     "semver": "7.7.3",
+    "tiny-jsonc": "1.0.2",
     "watchpack": "2.4.4"
   },
   "devDependencies": {
-    "@workflow/tsconfig": "workspace:*",
     "@types/node": "catalog:",
     "@types/semver": "7.7.1",
     "@types/watchpack": "2.4.4",
+    "@workflow/tsconfig": "workspace:*",
     "next": "16.0.1"
   },
   "peerDependencies": {

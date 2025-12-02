@@ -1,22 +1,33 @@
 import type { NextConfig } from 'next';
 import semver from 'semver';
 import { getNextBuilder } from './builder.js';
+import { readFileSync } from 'node:fs';
+import JSONC from 'tiny-jsonc';
 
 /**
  * Loads server-external-packages from Next.js installation
- * Supports both .jsonc (16.0-canary+) and .json (older versions)
+ * Supports both .jsonc (16.1.0-canary+) and .json (older versions)
  */
 function loadServerExternalPackages(): string[] {
   try {
-    // Try .jsonc first (Next.js 16.0-canary and above)
-    return require(
-      require.resolve('next/dist/lib/server-external-packages.jsonc')
+    // Try .jsonc first (Next.js 16.1.0-canary and above)
+    const jsoncPath = require.resolve(
+      'next/dist/lib/server-external-packages.jsonc'
     );
-  } catch {
-    // Fall back to .json (older Next.js versions)
-    return require(
-      require.resolve('next/dist/lib/server-external-packages.json')
-    );
+    const content = readFileSync(jsoncPath, 'utf-8');
+    return JSONC.parse(content) as string[];
+  } catch (jsoncError) {
+    try {
+      // Fall back to .json (older Next.js versions)
+      const jsonPath = require.resolve(
+        'next/dist/lib/server-external-packages.json'
+      );
+      const content = readFileSync(jsonPath, 'utf-8');
+      return JSON.parse(content) as string[];
+    } catch (jsonError) {
+      console.warn('Could not load server-external-packages from Next.js');
+      return [];
+    }
   }
 }
 
