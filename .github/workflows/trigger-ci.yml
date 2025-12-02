@@ -116,13 +116,19 @@ jobs:
             let isNewPR = false;
             
             if (existingPRs.data.length > 0) {
-              // Update existing PR
-              ciPR = existingPRs.data[0];
-              await github.rest.pulls.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: ciPR.number,
-                body: `🤖 **Automated CI Test PR**
+              // Filter to find the CI test PR (should be labeled with 'ci-test')
+              const ciTestPR = existingPRs.data.find(pr => 
+                pr.labels.some(label => label.name === 'ci-test')
+              );
+              
+              if (ciTestPR) {
+                // Update existing PR
+                ciPR = ciTestPR;
+                await github.rest.pulls.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: ciPR.number,
+                  body: `🤖 **Automated CI Test PR**
               
 This is an automated PR created to run CI tests for PR #${prDetails.number} by @${prDetails.user}.
 
@@ -135,10 +141,16 @@ This is an automated PR created to run CI tests for PR #${prDetails.number} by @
 
 ---
 _This PR was last updated in response to the \`/run-ci\` command in #${prDetails.number}_`
-              });
-            } else {
+                });
+              } else {
+                // Existing PR found but it's not labeled as a CI test PR
+                // Treat it as a new PR scenario
+                isNewPR = true;
+              }
+            }
+            
+            if (isNewPR || existingPRs.data.length === 0) {
               // Create a new draft PR
-              isNewPR = true;
               ciPR = await github.rest.pulls.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -160,13 +172,20 @@ This is an automated PR created to run CI tests for PR #${prDetails.number} by @
 _This PR was created in response to the \`/run-ci\` command in #${prDetails.number}_`,
                 draft: true
               });
-              
-              // Add labels to the new PR
+              isNewPR = true;
+            }
+            
+            // Ensure labels are present on the CI PR (handles both new and existing PRs)
+            const currentLabels = ciPR.labels?.map(l => l.name) || [];
+            const requiredLabels = ['ci-test', 'automated'];
+            const missingLabels = requiredLabels.filter(label => !currentLabels.includes(label));
+            
+            if (missingLabels.length > 0) {
               await github.rest.issues.addLabels({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: ciPR.number,
-                labels: ['ci-test', 'automated']
+                labels: missingLabels
               });
             }
             
