@@ -36,17 +36,10 @@ While Vite provides the build tooling and development server, Nitro adds the ser
 
 Add `workflow()` to your Vite config. This enables usage of the `"use workflow"` and `"use step"` directives.
 
-<<<<<<< HEAD
-```typescript title="vite.config.ts" lineNumbers
+```ts title="vite.config.ts" lineNumbers
 import { nitro } from "nitro/vite";
 import { defineConfig } from "vite";
 import { workflow } from "workflow/vite";
-=======
-```ts title="vite.config.ts" lineNumbers
-import { nitro } from 'nitro/vite';
-import { defineConfig } from 'vite';
-import { workflow } from 'workflow/vite';
->>>>>>> b82f27c8 (docs: update getting started intro comp)
 
 export default defineConfig({
   plugins: [nitro(), workflow()], // [!code highlight]
@@ -173,15 +166,9 @@ We'll dive deeper into workflows, steps, and other ways to suspend or handle eve
 
 To invoke your new workflow, we'll have to add your workflow to a `POST` API route handler, `api/signup.post.ts` with the following code:
 
-<<<<<<< HEAD
-```typescript title="api/signup.post.ts"
+```ts title="api/signup.post.ts" lineNumbers
 import { start } from "workflow/api";
 import { defineEventHandler } from "nitro/h3";
-=======
-```ts title="api/signup.post.ts" lineNumbers
-import { start } from 'workflow/api';
-import { defineEventHandler } from 'nitro/h3';
->>>>>>> b82f27c8 (docs: update getting started intro comp)
 import { handleUserSignup } from "../workflows/user-signup";
 
 export default defineEventHandler(async ({ req }) => {

@@ -197,7 +197,7 @@ We'll dive deeper into workflows, steps, and other ways to suspend or handle eve
 
 To invoke your new workflow, we'll need to add your workflow to a `POST` API Route Handler, `app/api/signup/route.ts`, with the following code:
 
-```ts title="app/api/signup/route.ts"
+```ts title="app/api/signup/route.ts" lineNumbers
 import { start } from "workflow/api";
 import { handleUserSignup } from "@/workflows/user-signup";
 import { NextResponse } from "next/server";

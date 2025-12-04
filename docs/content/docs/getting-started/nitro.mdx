@@ -159,15 +159,9 @@ Taking a look at this code:
 
 To invoke your new workflow, we'll create a new API route handler at `server/api/signup.post.ts` with the following code:
 
-<<<<<<< HEAD
-```typescript title="server/api/signup.post.ts"
+```ts title="server/api/signup.post.ts" lineNumbers
 import { start } from "workflow/api";
 import { defineEventHandler } from "nitro/h3";
-=======
-```ts title="server/api/signup.post.ts" lineNumbers
-import { start } from 'workflow/api';
-import { defineEventHandler } from 'nitro/h3';
->>>>>>> b82f27c8 (docs: update getting started intro comp)
 import { handleUserSignup } from "../../workflows/user-signup";
 
 export default defineEventHandler(async ({ req }) => {
