@@ -14,8 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  docs-links:
-    name: Docs Links
+  docs:
+    name: Docs
     runs-on: ubuntu-latest
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
@@ -42,5 +42,13 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Validate docs links
-        run: pnpm run lint:docs
+        run: pnpm run lint:links
+        working-directory: docs
+
+      - name: Check single quotes in code blocks
+        run: pnpm run lint:quotes
+        working-directory: docs
+
+      - name: Check TypeScript syntax in examples
+        run: pnpm run lint:ts-examples
         working-directory: docs
