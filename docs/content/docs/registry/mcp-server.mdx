@@ -1,0 +1,81 @@
+---
+title: MCP Server
+description: Use the Model Context Protocol server to integrate workflow steps with AI tools.
+---
+
+The Workflow Registry includes a Model Context Protocol (MCP) server that allows AI assistants and tools to discover and use workflow steps.
+
+## What is MCP?
+
+The Model Context Protocol is a standardized way for AI tools to interact with external systems and data sources. The Workflow Registry MCP server exposes registry steps as tools that AI assistants can use.
+
+## Starting the MCP Server
+
+Start the registry MCP server:
+
+```bash
+npx workflow mcp
+```
+
+The server will start and expose all available registry steps as MCP tools.
+
+## Configuration
+
+Configure the MCP server in your workflow configuration:
+
+```typescript title="workflow.config.ts"
+export default {
+  mcp: {
+    port: 3001,
+    enabled: true,
+    steps: [
+      // Specify which steps to expose via MCP
+      "data-transform",
+      "api-call",
+      // Or use "*" to expose all steps
+    ]
+  }
+}
+```
+
+## Using with AI Assistants
+
+Once the MCP server is running, AI assistants can:
+
+1. Discover available workflow steps
+2. Understand their parameters and capabilities
+3. Execute steps as part of larger workflows
+4. Chain multiple steps together
+
+## Security
+
+The MCP server includes built-in security features:
+
+- Authentication via API keys
+- Rate limiting
+- Input validation
+- Sandboxed execution
+
+Configure security settings in your `workflow.config.ts`:
+
+```typescript
+export default {
+  mcp: {
+    auth: {
+      apiKey: process.env.MCP_API_KEY,
+      allowedOrigins: ["https://your-app.com"]
+    },
+    rateLimit: {
+      maxRequests: 100,
+      windowMs: 60000
+    }
+  }
+}
+```
+
+## Next Steps
+
+- Learn about [creating custom steps](/docs/foundations/workflows-and-steps)
+- Explore [AI agent integration](/docs/ai)
+- Review [security best practices](/docs/deploying)
+

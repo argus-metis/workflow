@@ -1,0 +1,70 @@
+---
+title: Installation
+description: Install and configure steps from the registry in your workflow application.
+---
+
+Learn how to install and use pre-built workflow steps from the registry.
+
+## Installing Steps
+
+You can install steps from the registry using the Workflow CLI:
+
+```bash
+npx workflow add <step-name>
+```
+
+This will:
+1. Download the step code to your project
+2. Install any required dependencies
+3. Configure the step for use in your workflows
+
+## Using Registry Steps
+
+Once installed, you can import and use registry steps in your workflows:
+
+```typescript
+import { registryStep } from "@/workflows/steps/registry-step";
+
+export async function myWorkflow() {
+  "use workflow";
+  
+  const result = await registryStep({
+    // step configuration
+  });
+  
+  return result;
+}
+```
+
+## Managing Steps
+
+### Listing Installed Steps
+
+View all installed registry steps:
+
+```bash
+npx workflow list
+```
+
+### Updating Steps
+
+Update installed steps to their latest versions:
+
+```bash
+npx workflow update <step-name>
+```
+
+### Removing Steps
+
+Remove a step from your project:
+
+```bash
+npx workflow remove <step-name>
+```
+
+## Next Steps
+
+- Explore the [MCP Server](/docs/registry/mcp-server) integration
+- Browse available steps in the registry
+- Learn about contributing your own steps
+

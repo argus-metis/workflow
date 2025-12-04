@@ -1,0 +1,5 @@
+{
+  "title": "Registry",
+  "pages": ["get-started", "installation", "mcp-server"],
+  "defaultOpen": true
+}
