@@ -10,7 +10,6 @@ export const GET = async (
 ) => {
   const { slug } = await params;
   const page = source.getPage(slug.slice(0, -1));
-  console.log(page);
 
   if (!page) {
     return new Response('Not found', { status: 404 });
