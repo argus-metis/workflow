@@ -74,6 +74,26 @@ async function chargePayment(order: Order) {
 
 By default, steps have a maximum of 3 retry attempts before they fail and propagate the error to the workflow. Learn more about errors and retrying in the [Errors & Retrying](/docs/foundations/errors-and-retries) page.
 
+<Callout type="info">
+**Step Timeout Limitations:** While workflow functions can run indefinitely by suspending between steps, individual step functions are subject to the maximum execution timeout of the platform they run on.
+
+For example, on Vercel, steps follow the [default serverless function timeout limits](https://vercel.com/docs/functions/runtimes#max-duration) (300 seconds by default, up to 800 seconds on Pro/Enterprise plans).
+
+**Workaround:** You can configure timeouts for workflow routes using `vercel.json`:
+
+```json
+{
+  "functions": {
+    "app/.well-known/workflow/**/*": {
+      "maxDuration": 800
+    }
+  }
+}
+```
+
+Note: More granular per-step timeout configuration is planned for a future release.
+</Callout>
+
 <Callout type="warning">
 **Important:** Due to serialization, parameters are passed by **value, not by reference**. If you pass an object or array to a step and mutate it, those changes will **not** be visible in the workflow context. Always return modified data from your step functions instead. See [Pass-by-Value Semantics](/docs/foundations/serialization#pass-by-value-semantics) for details and examples.
 </Callout>
