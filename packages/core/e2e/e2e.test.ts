@@ -871,8 +871,13 @@ describe("e2e", () => {
     },
   );
 
+<<<<<<< HEAD
   test(
     "spawnWorkflowFromStepWorkflow - spawning a child workflow using start() inside a step",
+=======
+  test.skip(
+    'spawnWorkflowFromStepWorkflow - spawning a child workflow using start() inside a step',
+>>>>>>> 7a7c1ef8 (test)
     { timeout: 120_000 },
     async () => {
       // This workflow spawns another workflow using start() inside a step function
