@@ -10,7 +10,7 @@ description: Set up Workflow DevKit with Astro for durable, long-running functio
 <Step>
 ## Create Your Astro Project
 
-Start by creating a new Astro project. This command will create a new directory named `my-workflow-app` and setup a minimal Astro project inside it.
+Start by creating a new Astro project. This command will create a new directory named `my-workflow-app` and set up a minimal Astro project inside it.
 
 ```bash
 npm create astro@latest my-workflow-app -- --template minimal --install --yes
@@ -190,7 +190,7 @@ Workflows can be triggered from API routes or any server-side code.
 
 ## Run in Development
 
-To start your development server, run the following command in your terminal in the Vite root directory:
+To start your development server, run the following command in your terminal in the Astro root directory:
 
 ```bash
 npm run dev
@@ -207,8 +207,10 @@ Check the Astro development server logs to see your workflow execute as well as 
 Additionally, you can use the [Workflow DevKit CLI or Web UI](/docs/observability) to inspect your workflow runs and steps in detail.
 
 ```bash
+# Open the observability Web UI
+npx workflow web
+# or if you prefer a terminal interface, use the CLI inspect command
 npx workflow inspect runs
-# or add '--web' for an interactive Web based UI
 ```
 
 <img src="/o11y-ui.png" alt="Workflow DevKit Web UI" />
@@ -217,7 +219,7 @@ npx workflow inspect runs
 
 ## Deploying to Production
 
-Workflow DevKit apps currently work best when deployed to [Vercel](https://vercel.com/home) and needs no special configuration.
+Workflow DevKit apps currently work best when deployed to [Vercel](https://vercel.com/home) and need no special configuration.
 
 To deploy your Astro project to Vercel, ensure that the [Astro Vercel adapter](https://docs.astro.build/en/guides/integrations-guide/vercel) is configured:
 

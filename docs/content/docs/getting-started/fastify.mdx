@@ -35,7 +35,7 @@ npm i workflow fastify nitro rollup
 ```
 
 <Callout>
-By default, Fastify doesn't include a build system. Nitro adds one which enables compiling workflows, runs, and deploys for development and production. Learn more about [Nitro](https://v3.nitro.build).
+By default, Fastify doesn't include a build system. Nitro adds one which enables compiling workflows, runs, and deploys for development and production. Learn more about Nitro [here](https://v3.nitro.build).
 </Callout>
 
 If using TypeScript, you need to install the `@types/node` and `typescript` packages
@@ -140,25 +140,32 @@ import { FatalError } from "workflow";
 
 async function createUser(email: string) {
   "use step"; // [!code highlight]
+
   console.log(`Creating user with email: ${email}`);
+
+  // Full Node.js access - database calls, APIs, etc.
   return { id: crypto.randomUUID(), email };
 }
 
 async function sendWelcomeEmail(user: { id: string; email: string }) {
   "use step"; // [!code highlight]
+
   console.log(`Sending welcome email to user: ${user.id}`);
+
   if (Math.random() < 0.3) {
-    // Steps retry on unhandled errors
+    // By default, steps will be retried for unhandled errors
     throw new Error("Retryable!");
   }
 }
 
 async function sendOnboardingEmail(user: { id: string; email: string }) {
   "use step"; // [!code highlight]
+
   if (!user.email.includes("@")) {
-    // FatalError skips retries
+    // To skip retrying, throw a FatalError instead
     throw new FatalError("Invalid Email");
   }
+
   console.log(`Sending onboarding email to user: ${user.id}`);
 }
 ```
@@ -224,7 +231,10 @@ Check the Fastify development server logs to see your workflow execute as well a
 Additionally, you can use the [Workflow DevKit CLI or Web UI](/docs/observability) to inspect your workflow runs and steps in detail.
 
 ```bash
-npx workflow inspect runs # add '--web' for an interactive Web based UI
+# Open the observability Web UI
+npx workflow web
+# or if you prefer a terminal interface, use the CLI inspect command
+npx workflow inspect runs
 ```
 
 <img src="/o11y-ui.png" alt="Workflow DevKit Web UI" />
@@ -235,9 +245,9 @@ npx workflow inspect runs # add '--web' for an interactive Web based UI
 
 ---
 
-## Deploying to production
+## Deploying to Production
 
-Workflow DevKit apps currently work best when deployed to [Vercel](https://vercel.com/home) and needs no special configuration.
+Workflow DevKit apps currently work best when deployed to [Vercel](https://vercel.com/home) and need no special configuration.
 
 Check the [Deploying](/docs/deploying) section to learn how your workflows can be deployed elsewhere.
 
