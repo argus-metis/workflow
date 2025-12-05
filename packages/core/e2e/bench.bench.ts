@@ -74,6 +74,9 @@ async function triggerWorkflow(
 async function getWorkflowReturnValue(
   runId: string
 ): Promise<{ run: any; value: any }> {
+  const MAX_UNEXPECTED_CONTENT_RETRIES = 3;
+  let unexpectedContentRetries = 0;
+
   // We need to poll the GET endpoint until the workflow run is completed.
   while (true) {
     const url = new URL('/api/trigger', deploymentUrl);
@@ -105,7 +108,24 @@ async function getWorkflowReturnValue(
       return { run, value: res.body };
     }
 
-    throw new Error(`Unexpected content type: ${contentType}`);
+    // Unexpected content type - log details and retry
+    unexpectedContentRetries++;
+    const responseText = await res.text().catch(() => '<failed to read body>');
+    console.warn(
+      `[bench] Unexpected content type for runId=${runId} (attempt ${unexpectedContentRetries}/${MAX_UNEXPECTED_CONTENT_RETRIES}):\n` +
+        `  Status: ${res.status}\n` +
+        `  Content-Type: ${contentType}\n` +
+        `  Response: ${responseText.slice(0, 500)}${responseText.length > 500 ? '...' : ''}`
+    );
+
+    if (unexpectedContentRetries >= MAX_UNEXPECTED_CONTENT_RETRIES) {
+      throw new Error(
+        `Unexpected content type after ${MAX_UNEXPECTED_CONTENT_RETRIES} retries: ${contentType} (status=${res.status})`
+      );
+    }
+
+    // Wait before retrying
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
 }
 
