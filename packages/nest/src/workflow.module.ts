@@ -4,12 +4,12 @@ import {
   type OnModuleInit,
   type OnModuleDestroy,
 } from '@nestjs/common';
-import { NestJSBuilder } from './builder.js';
+import { LocalBuilder, VercelBuilder } from './builder.js';
 import { WorkflowController } from './workflow.controller.js';
 import { createBuildQueue } from '@workflow/builders';
 
 const enqueue = createBuildQueue();
-const builder = new NestJSBuilder();
+const localBuilder = new LocalBuilder();
 
 @Module({})
 export class WorkflowModule implements OnModuleInit, OnModuleDestroy {
@@ -23,11 +23,18 @@ export class WorkflowModule implements OnModuleInit, OnModuleDestroy {
   }
 
   static async build() {
-    await enqueue(() => builder.build());
+    // Build locally
+    if (!process.env.VERCEL_DEPLOYMENT_ID) {
+      await enqueue(() => localBuilder.build());
+      return;
+    }
+
+    // Build for Vercel
+    await enqueue(() => new VercelBuilder().build());
   }
 
   async onModuleInit() {
-    await enqueue(() => builder.build());
+    await enqueue(() => localBuilder.build());
   }
 
   async onModuleDestroy() {
