@@ -10,12 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { WorkflowsList } from '@/components/workflows-list';
 import { buildUrlWithConfig, useQueryParamConfig } from '@/lib/config';
 import { useWorkflowGraphManifest } from '@/lib/flow-graph/use-workflow-graph';
-import {
-  useHookIdState,
-  useSidebarState,
-  useTabState,
-  useWorkflowIdState,
-} from '@/lib/url-state';
+import { useHookIdState, useSidebarState, useTabState } from '@/lib/url-state';
 
 export default function Home() {
   const router = useRouter();

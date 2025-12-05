@@ -38,17 +38,17 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { WorkflowGraphExecutionViewer } from '@/components/workflow-graph-execution-viewer';
 import { buildUrlWithConfig, worldConfigToEnvMap } from '@/lib/config';
 import type { WorldConfig } from '@/lib/config-world';
-import { mapRunToExecution } from '@/lib/graph-execution-mapper';
-import { useWorkflowGraphManifest } from '@/lib/use-workflow-graph';
+import { mapRunToExecution } from '@/lib/flow-graph/graph-execution-mapper';
+import { useWorkflowGraphManifest } from '@/lib/flow-graph/use-workflow-graph';
 import { CancelButton } from './display-utils/cancel-button';
 import { CopyableText } from './display-utils/copyable-text';
 import { LiveStatus } from './display-utils/live-status';
 import { RelativeTime } from './display-utils/relative-time';
 import { RerunButton } from './display-utils/rerun-button';
 import { StatusBadge } from './display-utils/status-badge';
+import { WorkflowGraphExecutionViewer } from './flow-graph/workflow-graph-execution-viewer';
 import { Skeleton } from './ui/skeleton';
 
 interface RunDetailViewProps {
