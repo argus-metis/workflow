@@ -485,19 +485,6 @@ export function RunDetailView({
             </TabsContent>
           </Tabs>
 
-          {/* Default trace view */}
-          <div className="h-full flex-1 min-h-0">
-            <WorkflowTraceViewer
-              error={error}
-              steps={allSteps}
-              events={allEvents}
-              hooks={allHooks}
-              env={env}
-              run={run}
-              isLoading={loading}
-            />
-          </div>
-
           {auxiliaryDataLoading && (
             <div className="fixed flex items-center gap-2 left-8 bottom-8 bg-background border rounded-md px-4 py-2 shadow-lg">
               <Loader2 className="size-4 animate-spin" />
