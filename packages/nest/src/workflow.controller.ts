@@ -33,7 +33,7 @@ export class WorkflowController {
     // Works for both Express and Fastify
     const protocol =
       req.protocol ?? (req.raw?.socket?.encrypted ? 'https' : 'http');
-    const host = req.hostname ?? req.headers.host;
+    const host = req.headers.host ?? req.hostname;
     const url = req.originalUrl ?? req.url;
     const fullUrl = `${protocol}://${host}${url}`;
 
