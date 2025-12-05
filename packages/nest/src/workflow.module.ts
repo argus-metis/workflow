@@ -23,10 +23,7 @@ export class WorkflowModule implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
-    // if (!process.env.VERCEL_DEPLOYMENT_ID) {
     await enqueue(() => localBuilder.build());
-    return;
-    // }
   }
 
   async onModuleDestroy() {
