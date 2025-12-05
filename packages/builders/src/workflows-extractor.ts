@@ -528,11 +528,55 @@ function analyzeStatement(
         entryNodeIds = branchResult.entryNodeIds;
       }
       exitNodeIds.push(...branchResult.exitNodeIds);
+    } else {
+      // Handle single-statement consequent (no braces)
+      const branchResult = analyzeStatement(
+        stmt.consequent,
+        stepDeclarations,
+        context,
+        functionMap
+      );
+
+      for (const node of branchResult.nodes) {
+        if (!node.metadata) node.metadata = {};
+        node.metadata.conditionalId = conditionalId;
+        node.metadata.conditionalBranch = 'Then';
+      }
+
+      nodes.push(...branchResult.nodes);
+      edges.push(...branchResult.edges);
+      if (entryNodeIds.length === 0) {
+        entryNodeIds = branchResult.entryNodeIds;
+      }
+      exitNodeIds.push(...branchResult.exitNodeIds);
     }
 
     if (stmt.alternate?.type === 'BlockStatement') {
       const branchResult = analyzeBlock(
         stmt.alternate.stmts,
+        stepDeclarations,
+        context,
+        functionMap
+      );
+
+      for (const node of branchResult.nodes) {
+        if (!node.metadata) node.metadata = {};
+        node.metadata.conditionalId = conditionalId;
+        node.metadata.conditionalBranch = 'Else';
+      }
+
+      nodes.push(...branchResult.nodes);
+      edges.push(...branchResult.edges);
+      if (entryNodeIds.length === 0) {
+        entryNodeIds = branchResult.entryNodeIds;
+      } else {
+        entryNodeIds.push(...branchResult.entryNodeIds);
+      }
+      exitNodeIds.push(...branchResult.exitNodeIds);
+    } else if (stmt.alternate) {
+      // Handle single-statement alternate (no braces) or else-if
+      const branchResult = analyzeStatement(
+        stmt.alternate,
         stepDeclarations,
         context,
         functionMap
@@ -592,6 +636,35 @@ function analyzeStatement(
           });
         }
       }
+    } else {
+      // Handle single-statement body (no braces)
+      const loopResult = analyzeStatement(
+        body,
+        stepDeclarations,
+        context,
+        functionMap
+      );
+
+      for (const node of loopResult.nodes) {
+        if (!node.metadata) node.metadata = {};
+        node.metadata.loopId = loopId;
+      }
+
+      nodes.push(...loopResult.nodes);
+      edges.push(...loopResult.edges);
+      entryNodeIds = loopResult.entryNodeIds;
+      exitNodeIds = loopResult.exitNodeIds;
+
+      for (const exitId of loopResult.exitNodeIds) {
+        for (const entryId of loopResult.entryNodeIds) {
+          edges.push({
+            id: `e_${exitId}_back_${entryId}`,
+            source: exitId,
+            target: entryId,
+            type: 'loop',
+          });
+        }
+      }
     }
 
     context.inLoop = savedLoop;
@@ -608,6 +681,36 @@ function analyzeStatement(
     if (body.type === 'BlockStatement') {
       const loopResult = analyzeBlock(
         body.stmts,
+        stepDeclarations,
+        context,
+        functionMap
+      );
+
+      for (const node of loopResult.nodes) {
+        if (!node.metadata) node.metadata = {};
+        node.metadata.loopId = loopId;
+        node.metadata.loopIsAwait = isAwait;
+      }
+
+      nodes.push(...loopResult.nodes);
+      edges.push(...loopResult.edges);
+      entryNodeIds = loopResult.entryNodeIds;
+      exitNodeIds = loopResult.exitNodeIds;
+
+      for (const exitId of loopResult.exitNodeIds) {
+        for (const entryId of loopResult.entryNodeIds) {
+          edges.push({
+            id: `e_${exitId}_back_${entryId}`,
+            source: exitId,
+            target: entryId,
+            type: 'loop',
+          });
+        }
+      }
+    } else {
+      // Handle single-statement body (no braces)
+      const loopResult = analyzeStatement(
+        body,
         stepDeclarations,
         context,
         functionMap

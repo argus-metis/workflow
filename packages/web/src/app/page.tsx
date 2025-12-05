@@ -9,12 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { WorkflowsList } from '@/components/workflows-list';
 import { buildUrlWithConfig, useQueryParamConfig } from '@/lib/config';
-import {
-  useHookIdState,
-  useSidebarState,
-  useTabState,
-  useWorkflowIdState,
-} from '@/lib/url-state';
+import { useHookIdState, useSidebarState, useTabState } from '@/lib/url-state';
 import { useWorkflowGraphManifest } from '@/lib/use-workflow-graph';
 
 export default function Home() {
@@ -26,13 +21,12 @@ export default function Home() {
 
   const selectedHookId = sidebar === 'hook' && hookId ? hookId : undefined;
 
-  // TODO(Karthik): Uncomment after https://github.com/vercel/workflow/pull/455 is merged
   // Fetch workflow graph manifest
-  // const {
-  //   manifest: graphManifest,
-  //   loading: graphLoading,
-  //   error: graphError,
-  // } = useWorkflowGraphManifest(config);
+  const {
+    manifest: graphManifest,
+    loading: graphLoading,
+    error: graphError,
+  } = useWorkflowGraphManifest(config);
 
   const handleRunClick = (runId: string, streamId?: string) => {
     if (!streamId) {
@@ -57,8 +51,7 @@ export default function Home() {
     }
   };
 
-  // TODO(Karthik): Uncomment after https://github.com/vercel/workflow/pull/455 is merged.
-  // const workflows = graphManifest ? Object.values(graphManifest.workflows) : [];
+  const workflows = graphManifest ? Object.values(graphManifest.workflows) : [];
 
   return (
     <div className="max-w-7xl mx-auto px-4">
@@ -66,8 +59,7 @@ export default function Home() {
         <TabsList className="mb-4">
           <TabsTrigger value="runs">Runs</TabsTrigger>
           <TabsTrigger value="hooks">Hooks</TabsTrigger>
-          {/* TODO(Karthik): Uncomment after https://github.com/vercel/workflow/pull/455 is merged */}
-          {/* <TabsTrigger value="workflows">Workflows</TabsTrigger> */}
+          <TabsTrigger value="workflows">Workflows</TabsTrigger>
         </TabsList>
         <TabsContent value="runs">
           <ErrorBoundary
@@ -89,8 +81,7 @@ export default function Home() {
             />
           </ErrorBoundary>
         </TabsContent>
-        {/* TODO(Karthik): Uncomment after https://github.com/vercel/workflow/pull/455 is merged */}
-        {/* <TabsContent value="workflows">
+        <TabsContent value="workflows">
           <ErrorBoundary
             title="Workflows Error"
             description="Failed to load workflow graph data. Please try refreshing the page."
@@ -110,7 +101,7 @@ export default function Home() {
               />
             </div>
           </ErrorBoundary>
-        </TabsContent> */}
+        </TabsContent>
       </Tabs>
     </div>
   );

@@ -8,8 +8,7 @@ import {
   type WorkflowRun,
   WorkflowTraceViewer,
 } from '@workflow/web-shared';
-import { AlertCircle, HelpCircle, Loader2 } from 'lucide-react';
-// import { List, Network } from 'lucide-react';
+import { AlertCircle, HelpCircle, List, Loader2, Network } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
@@ -33,17 +32,17 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
-// import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-// import { WorkflowGraphExecutionViewer } from '@/components/workflow-graph-execution-viewer';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { WorkflowGraphExecutionViewer } from '@/components/workflow-graph-execution-viewer';
 import { buildUrlWithConfig, worldConfigToEnvMap } from '@/lib/config';
 import type { WorldConfig } from '@/lib/config-world';
-// import { mapRunToExecution } from '@/lib/graph-execution-mapper';
-// import { useWorkflowGraphManifest } from '@/lib/use-workflow-graph';
+import { mapRunToExecution } from '@/lib/graph-execution-mapper';
+import { useWorkflowGraphManifest } from '@/lib/use-workflow-graph';
 import { CancelButton } from './display-utils/cancel-button';
 import { CopyableText } from './display-utils/copyable-text';
 import { LiveStatus } from './display-utils/live-status';
@@ -69,16 +68,15 @@ export function RunDetailView({
   const [rerunning, setRerunning] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [showRerunDialog, setShowRerunDialog] = useState(false);
-  // const [activeTab, setActiveTab] = useState<'trace' | 'graph'>('trace');
+  const [activeTab, setActiveTab] = useState<'trace' | 'graph'>('trace');
   const env = useMemo(() => worldConfigToEnvMap(config), [config]);
 
   // Fetch workflow graph manifest
-  // TODO(Karthik): Uncomment after https://github.com/vercel/workflow/pull/455 is merged
-  // const {
-  //   manifest: graphManifest,
-  //   loading: graphLoading,
-  //   error: graphError,
-  // } = useWorkflowGraphManifest(config);
+  const {
+    manifest: graphManifest,
+    loading: graphLoading,
+    error: graphError,
+  } = useWorkflowGraphManifest(config);
 
   // Fetch all run data with live updates
   const {
@@ -96,24 +94,22 @@ export function RunDetailView({
   // Find the workflow graph for this run
   // The manifest is keyed by workflowId which matches run.workflowName
   // e.g., "workflow//example/workflows/1_simple.ts//simple"
-  // TODO(Karthik): Uncomment after https://github.com/vercel/workflow/pull/455 is merged
-  // const workflowGraph = useMemo(() => {
-  //   if (!graphManifest || !run.workflowName) return null;
-  //   return graphManifest.workflows[run.workflowName] ?? null;
-  // }, [graphManifest, run.workflowName]);
+  const workflowGraph = useMemo(() => {
+    if (!graphManifest || !run.workflowName) return null;
+    return graphManifest.workflows[run.workflowName] ?? null;
+  }, [graphManifest, run.workflowName]);
 
   // Map run data to execution overlay
-  // TODO(Karthik): Uncomment after https://github.com/vercel/workflow/pull/455 is merged
-  // const execution = useMemo(() => {
-  //   if (!workflowGraph || !run.runId) return null;
+  const execution = useMemo(() => {
+    if (!workflowGraph || !run.runId) return null;
 
-  //   return mapRunToExecution(
-  //     run,
-  //     allSteps || [],
-  //     allEvents || [],
-  //     workflowGraph
-  //   );
-  // }, [workflowGraph, run, allSteps, allEvents]);
+    return mapRunToExecution(
+      run,
+      allSteps || [],
+      allEvents || [],
+      workflowGraph
+    );
+  }, [workflowGraph, run, allSteps, allEvents]);
 
   const handleCancelClick = () => {
     setShowCancelDialog(true);
@@ -419,8 +415,7 @@ export function RunDetailView({
         </div>
 
         <div className="mt-4 flex-1 flex flex-col min-h-0">
-          {/* TODO(Karthik): Uncomment after https://github.com/vercel/workflow/pull/455 is merged */}
-          {/* <Tabs
+          <Tabs
             value={activeTab}
             onValueChange={(v) => setActiveTab(v as 'trace' | 'graph')}
             className="flex-1 flex flex-col min-h-0"
@@ -488,7 +483,7 @@ export function RunDetailView({
                 )}
               </div>
             </TabsContent>
-          </Tabs> */}
+          </Tabs>
 
           {/* Default trace view */}
           <div className="h-full flex-1 min-h-0">
