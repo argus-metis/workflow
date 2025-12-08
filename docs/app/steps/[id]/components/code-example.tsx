@@ -1,6 +1,11 @@
 'use client';
 
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  CodeBlockTab,
+  CodeBlockTabs,
+  CodeBlockTabsList,
+  CodeBlockTabsTrigger,
+} from '@/components/geistdocs/code-block-tabs';
 
 interface CodeExampleProps {
   codeHtml: string;
@@ -8,31 +13,28 @@ interface CodeExampleProps {
 }
 
 export function CodeExample({ codeHtml, stepId }: CodeExampleProps) {
+  const stepPath = `@/lib/steps/${stepId}`;
+
   return (
     <div>
       <h2 className="mb-4 text-xl font-semibold">Code</h2>
-      <Tabs defaultValue="code" className="w-full">
-        <TabsList>
-          <TabsTrigger value="code">Code</TabsTrigger>
-          <TabsTrigger value="usage">Usage</TabsTrigger>
-        </TabsList>
-        <TabsContent value="code" className="mt-0">
+      <CodeBlockTabs defaultValue="code">
+        <CodeBlockTabsList>
+          <CodeBlockTabsTrigger value="code">{stepPath}</CodeBlockTabsTrigger>
+          <CodeBlockTabsTrigger value="usage">Usage</CodeBlockTabsTrigger>
+        </CodeBlockTabsList>
+        <CodeBlockTab value="code">
           <div
-            className="overflow-auto border text-sm py-6 [&_pre]:!bg-transparent"
+            className="overflow-auto text-sm py-6 [&_pre]:!bg-transparent [&_pre]:m-0"
             dangerouslySetInnerHTML={{ __html: codeHtml }}
           />
-          <div className="mt-2 text-right text-xs text-muted-foreground">
-            steps/{stepId}
+        </CodeBlockTab>
+        <CodeBlockTab value="usage">
+          <div className="p-8 text-center text-sm text-muted-foreground">
+            Usage examples coming soon...
           </div>
-        </TabsContent>
-        <TabsContent value="usage" className="mt-0">
-          <div className="rounded-lg border bg-muted/50 p-8 text-center">
-            <p className="text-sm text-muted-foreground">
-              Usage examples coming soon...
-            </p>
-          </div>
-        </TabsContent>
-      </Tabs>
+        </CodeBlockTab>
+      </CodeBlockTabs>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { codeToHtml } from 'shiki';
 import { Separator } from '@/components/ui/separator';
+import { loadStepCode } from '../directory';
 import { stepsData } from '../steps-data';
 import { CodeExample } from './components/code-example';
 import { DependenciesSection } from './components/dependencies-section';
@@ -49,40 +50,10 @@ export default async function StepDetailPage({ params }: StepPageProps) {
     notFound();
   }
 
-  // Generate example code
-  const exampleCode = `import { FatalError } from 'workflow';
+  // Load step code from directory
+  const exampleCode = await loadStepCode(id);
 
-type SlackMessageParams = {
-  channel: string;
-  text: string;
-  blocks?: any[];
-};
-
-export async function sendSlackMessage(params: SlackMessageParams) {
-  'use step';
-
-  const token = process.env.SLACK_BOT_TOKEN;
-
-  if (!token) {
-    throw new FatalError('SLACK_BOT_TOKEN is required');
-  }
-
-  const response = await fetch('https://slack.com/api/chat.postMessage', {
-    method: 'POST',
-    headers: {
-      Authorization: \`Bearer \${token}\`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(params),
-  });
-
-  const data = await response.json();
-
-  if (!data.ok) {
-    throw new FatalError(\`Slack API error: \${data.error}\`);
-  }
-}`;
-
+  // Generate syntax highlighted HTML
   const codeHtml = await codeToHtml(exampleCode, {
     lang: 'typescript',
     themes: {
@@ -123,9 +94,13 @@ export async function sendSlackMessage(params: SlackMessageParams) {
 
   return (
     <div className="min-h-screen bg-background">
-      <StepBreadcrumb stepId={id} />
+      <div className="mx-auto max-w-7xl px-6">
+        <div className="py-6">
+          <StepBreadcrumb stepId={id} />
+        </div>
+      </div>
 
-      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-8 px-6 py-8 lg:grid-cols-[1fr_300px]">
+      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-8 px-6 pb-8 lg:grid-cols-[1fr_300px]">
         {/* Main Content */}
         <div className="space-y-8">
           <StepHeader

@@ -1,19 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { Grid, Search } from 'lucide-react';
 import Link from 'next/link';
-import { stepsData, type StepCategory, type StepType } from './steps-data';
-import { Search, Grid, Triangle, Wrench, Clock } from 'lucide-react';
+import { useState } from 'react';
+import { Input } from '@/components/ui/input';
+import { type StepCategory, stepsData } from './steps-data';
 
 export function StepsMarketplace() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<
     StepCategory | 'Any Category' | null
   >('Any Category');
-  const [selectedType, setSelectedType] = useState<
-    StepType | 'Any Type' | null
-  >('Any Type');
-  const [showRecentlyAdded, setShowRecentlyAdded] = useState(false);
 
   const categories: Array<StepCategory | 'Any Category'> = [
     'Any Category',
@@ -27,12 +24,6 @@ export function StepsMarketplace() {
     'Webhooks',
   ];
 
-  const types: Array<StepType | 'Any Type'> = [
-    'Any Type',
-    'Native',
-    'External',
-  ];
-
   // Filter steps
   const filteredSteps = stepsData.filter((step) => {
     const matchesSearch =
@@ -40,14 +31,9 @@ export function StepsMarketplace() {
       step.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory =
       selectedCategory === 'Any Category' || step.category === selectedCategory;
-    const matchesType =
-      selectedType === 'Any Type' || step.type === selectedType;
-    const matchesRecent = !showRecentlyAdded || (step.downloads ?? 0) < 7000; // Simulate recently added
 
-    return matchesSearch && matchesCategory && matchesType && matchesRecent;
+    return matchesSearch && matchesCategory;
   });
-
-  const featuredSteps = filteredSteps.filter((step) => step.featured);
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -60,58 +46,6 @@ export function StepsMarketplace() {
         {/* Sidebar */}
         <aside className="w-64 border-r bg-background px-4 py-6">
           <nav className="space-y-6">
-            {/* Filter by Type */}
-            <div>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedType('Any Type');
-                  setSelectedCategory('Any Category');
-                  setShowRecentlyAdded(false);
-                }}
-                className="mb-3 flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                <Grid className="size-4" />
-                Any Type
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedType('Native');
-                  setSelectedCategory('Any Category');
-                  setShowRecentlyAdded(false);
-                }}
-                className="mb-3 flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                <Triangle className="size-4" />
-                Native
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedType('External');
-                  setSelectedCategory('Any Category');
-                  setShowRecentlyAdded(false);
-                }}
-                className="mb-3 flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                <Wrench className="size-4" />
-                External
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowRecentlyAdded(true);
-                  setSelectedType('Any Type');
-                  setSelectedCategory('Any Category');
-                }}
-                className="mb-3 flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                <Clock className="size-4" />
-                Recently Added
-              </button>
-            </div>
-
             {/* Categories */}
             <div>
               <h3 className="mb-3 px-3 text-sm font-semibold">Categories</h3>
@@ -122,7 +56,6 @@ export function StepsMarketplace() {
                     type="button"
                     onClick={() => {
                       setSelectedCategory(category);
-                      setShowRecentlyAdded(false);
                     }}
                     className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
                       selectedCategory === category
@@ -145,41 +78,19 @@ export function StepsMarketplace() {
           <div className="mb-8">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <input
+              <Input
                 type="text"
                 placeholder="Search integrations..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-10 w-full rounded-md border border-border bg-background pl-10 pr-4 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                className="h-10 pl-10"
               />
             </div>
           </div>
 
-          {/* Featured Section */}
-          {featuredSteps.length > 0 &&
-            !searchQuery &&
-            !showRecentlyAdded &&
-            selectedCategory === 'Any Category' &&
-            selectedType === 'Any Type' && (
-              <section className="mb-12">
-                <h2 className="mb-2 text-xl font-semibold">Featured</h2>
-                <p className="mb-6 text-sm text-muted-foreground">
-                  A selection of integrations curated by our marketplace team.
-                </p>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-                  {featuredSteps.map((step) => (
-                    <StepCard key={step.id} step={step} />
-                  ))}
-                </div>
-              </section>
-            )}
-
           {/* All Steps Grid */}
           <section>
-            {searchQuery ||
-            selectedCategory !== 'Any Category' ||
-            selectedType !== 'Any Type' ||
-            showRecentlyAdded ? (
+            {searchQuery || selectedCategory !== 'Any Category' ? (
               <h2 className="mb-6 text-xl font-semibold">
                 {filteredSteps.length} result
                 {filteredSteps.length !== 1 ? 's' : ''}
