@@ -6,20 +6,8 @@ import {
   createBaseBuilderConfig,
   VercelBuildOutputAPIBuilder,
   type TanStackConfig,
+  NORMALIZE_REQUEST_CODE,
 } from '@workflow/builders';
-
-// NOTE: This is the same as SvelteKit/Astro request converter, should merge
-const NORMALIZE_REQUEST_CONVERTER = `
-async function normalizeRequestConverter(request) {
-  const options = {
-    method: request.method,
-    headers: new Headers(request.headers)
-  };
-  if (!['GET', 'HEAD', 'OPTIONS', 'TRACE', 'CONNECT'].includes(request.method)) {
-    options.body = await request.arrayBuffer();
-  }
-  return new Request(request.url, options);
-} `;
 
 const WORKFLOW_ROUTES = [
   {
@@ -110,7 +98,7 @@ export class LocalBuilder extends BaseBuilder {
     // Normalize request, needed for preserving request through TanStack
     stepsRouteContent = stepsRouteContent.replace(
       /export\s*\{\s*stepEntrypoint\s+as\s+POST\s*\}\s*;?$/m,
-      `${NORMALIZE_REQUEST_CONVERTER}
+      `${NORMALIZE_REQUEST_CODE}
 export const POST = async ({ request }) => {
   const normalRequest = await normalizeRequestConverter(request);
   return stepEntrypoint(normalRequest);
@@ -160,7 +148,7 @@ export const Route = createFileRoute("/.well-known/workflow/v1/step")({
     // Normalize request, needed for preserving request through TanStack
     workflowsRouteContent = workflowsRouteContent.replace(
       /export const POST = workflowEntrypoint\(workflowCode\);?$/m,
-      `${NORMALIZE_REQUEST_CONVERTER}
+      `${NORMALIZE_REQUEST_CODE}
 export const POST = async ({request}) => {
   const normalRequest = await normalizeRequestConverter(request);
   return workflowEntrypoint(workflowCode)(normalRequest);
@@ -197,7 +185,6 @@ export const Route = createFileRoute("/.well-known/workflow/v1/flow")({
     await this.createWebhookBundle({
       outfile: webhookRouteFile,
       bundle: false, // TanStack will handle bundling
-      suppressUndefinedRejections: true,
     });
 
     let webhookRouteContent = await readFile(webhookRouteFile, 'utf-8');
@@ -224,7 +211,7 @@ export const Route = createFileRoute("/.well-known/workflow/v1/flow")({
     // Replace exports with TanStack Start handlers
     webhookRouteContent = webhookRouteContent.replace(
       /export const GET = handler;[\s\S]*?export const OPTIONS = handler;/,
-      `${NORMALIZE_REQUEST_CONVERTER}
+      `${NORMALIZE_REQUEST_CODE}
 
 const createHandler = () => async ({ request, params }) => {
   const normalRequest = await normalizeRequestConverter(request);
