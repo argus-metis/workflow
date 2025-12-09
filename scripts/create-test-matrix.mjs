@@ -63,9 +63,8 @@ const DEV_TEST_CONFIGS = {
     workflowsDir: 'src/workflows',
   },
   'tanstack-start': {
-    generatedStepPath: 'src/routes/[.]well-known/workflow/v1/-step-bundle.ts',
-    generatedWorkflowPath:
-      'src/routes/[.]well-known/workflow/v1/-flow-bundle.ts',
+    generatedStepPath: 'node_modules/.nitro/workflow/steps.mjs',
+    generatedWorkflowPath: 'node_modules/.nitro/workflow/workflows.mjs',
     apiFilePath: 'src/routes/api/chat.ts',
     apiFileImportPath: '../../..',
   },
