@@ -1027,9 +1027,6 @@ importers:
       '@workflow/nuxt':
         specifier: workspace:*
         version: link:../nuxt
-      '@workflow/rollup':
-        specifier: workspace:*
-        version: link:../rollup
       '@workflow/sveltekit':
         specifier: workspace:*
         version: link:../sveltekit
