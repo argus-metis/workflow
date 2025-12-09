@@ -275,7 +275,7 @@ export const Route = createFileRoute("/.well-known/workflow/v1/webhook/$token")(
         return rootRoutesDir;
       } catch {
         throw new Error(
-          'Could not find SvelteKit routes directory. Expected either "src/routes" or "routes" to exist.'
+          'Could not find routes directory. Expected either "src/routes" or "routes" to exist.'
         );
       }
     }
