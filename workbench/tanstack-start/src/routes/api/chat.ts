@@ -3,7 +3,7 @@
 
 import { createFileRoute } from '@tanstack/react-router';
 import { json } from '@tanstack/react-start';
-import * as workflows from '../../workflows/3_streams.js';
+import * as workflows from '../../../workflows/3_streams.js';
 
 export const Route = createFileRoute('/api/chat')({
   server: {

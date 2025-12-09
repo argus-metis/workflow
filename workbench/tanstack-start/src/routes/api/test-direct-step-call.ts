@@ -4,7 +4,7 @@
 
 import { createFileRoute } from '@tanstack/react-router';
 import { json } from '@tanstack/react-start';
-import { add } from '../../workflows/99_e2e.js';
+import { add } from '../../../workflows/99_e2e.js';
 
 export const Route = createFileRoute('/api/test-direct-step-call')({
   server: {
