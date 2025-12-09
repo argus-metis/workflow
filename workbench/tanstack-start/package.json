@@ -9,6 +9,7 @@
     "dev": "vite dev",
     "build": "vite build",
     "serve": "vite preview",
+    "start": "node .output/server/index.mjs",
     "test": "vitest run",
     "format": "biome format",
     "lint": "biome lint",
