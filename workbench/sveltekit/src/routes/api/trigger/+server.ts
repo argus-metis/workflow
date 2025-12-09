@@ -1,18 +1,38 @@
+import type { RequestHandler } from '@sveltejs/kit';
 import { getRun, start } from 'workflow/api';
 import {
   WorkflowRunFailedError,
   WorkflowRunNotCompletedError,
 } from 'workflow/internal/errors';
 import { hydrateWorkflowArguments } from 'workflow/internal/serialization';
-import { allWorkflows } from '@/_workflows';
+import { allWorkflows } from '$lib/_workflows.js';
 
-export async function POST(req: Request) {
-  const url = new URL(req.url);
+export const POST: RequestHandler = async ({ request }) => {
+  const url = new URL(request.url);
   const workflowFile =
     url.searchParams.get('workflowFile') || 'workflows/99_e2e.ts';
-  const workflowFn = url.searchParams.get('workflowFn') || 'simple';
+  if (!workflowFile) {
+    return new Response('No workflowFile query parameter provided', {
+      status: 400,
+    });
+  }
+  const workflows = allWorkflows[workflowFile as keyof typeof allWorkflows];
+  if (!workflows) {
+    return new Response(`Workflow file "${workflowFile}" not found`, {
+      status: 400,
+    });
+  }
 
-  console.log('calling workflow', { workflowFile, workflowFn });
+  const workflowFn = url.searchParams.get('workflowFn') || 'simple';
+  if (!workflowFn) {
+    return new Response('No workflow query parameter provided', {
+      status: 400,
+    });
+  }
+  const workflow = workflows[workflowFn as keyof typeof workflows];
+  if (!workflow) {
+    return new Response(`Workflow "${workflowFn}" not found`, { status: 400 });
+  }
 
   let args: any[] = [];
 
@@ -25,45 +45,27 @@ export async function POST(req: Request) {
     });
   } else {
     // Args from body
-    const body = await req.text();
+    const body = await request.text();
     if (body) {
       args = hydrateWorkflowArguments(JSON.parse(body), globalThis);
     } else {
       args = [42];
     }
   }
-  console.log(
-    `Starting "${workflowFile}/${workflowFn}" workflow with args: ${args}`
-  );
+  console.log(`Starting "${workflowFn}" workflow with args: ${args}`);
 
   try {
-    const workflows = allWorkflows[workflowFile as keyof typeof allWorkflows];
-    if (!workflows) {
-      return Response.json(
-        { error: `Workflow file "${workflowFile}" not found` },
-        { status: 404 }
-      );
-    }
-
-    const workflow = workflows[workflowFn as keyof typeof workflows];
-    if (!workflow) {
-      return Response.json(
-        { error: `Function "${workflowFn}" not found in ${workflowFile}` },
-        { status: 400 }
-      );
-    }
-
-    const run = await start(workflow as any, args);
+    const run = await start(workflow as any, args as any);
     console.log('Run:', run.runId);
     return Response.json(run);
   } catch (err) {
     console.error(`Failed to start!!`, err);
     throw err;
   }
-}
+};
 
-export async function GET(req: Request) {
-  const url = new URL(req.url);
+export const GET: RequestHandler = async ({ request }) => {
+  const url = new URL(request.url);
   const runId = url.searchParams.get('runId');
   if (!runId) {
     return new Response('No runId provided', { status: 400 });
@@ -146,4 +148,4 @@ export async function GET(req: Request) {
       { status: 500 }
     );
   }
-}
+};

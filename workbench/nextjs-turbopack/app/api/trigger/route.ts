@@ -10,9 +10,28 @@ export async function POST(req: Request) {
   const url = new URL(req.url);
   const workflowFile =
     url.searchParams.get('workflowFile') || 'workflows/99_e2e.ts';
-  const workflowFn = url.searchParams.get('workflowFn') || 'simple';
+  if (!workflowFile) {
+    return new Response('No workflowFile query parameter provided', {
+      status: 400,
+    });
+  }
+  const workflows = allWorkflows[workflowFile as keyof typeof allWorkflows];
+  if (!workflows) {
+    return new Response(`Workflow file "${workflowFile}" not found`, {
+      status: 400,
+    });
+  }
 
-  console.log('calling workflow', { workflowFile, workflowFn });
+  const workflowFn = url.searchParams.get('workflowFn') || 'simple';
+  if (!workflowFn) {
+    return new Response('No workflow query parameter provided', {
+      status: 400,
+    });
+  }
+  const workflow = workflows[workflowFn as keyof typeof workflows];
+  if (!workflow) {
+    return new Response(`Workflow "${workflowFn}" not found`, { status: 400 });
+  }
 
   let args: any[] = [];
 
@@ -32,29 +51,11 @@ export async function POST(req: Request) {
       args = [42];
     }
   }
-  console.log(
-    `Starting "${workflowFile}/${workflowFn}" workflow with args: ${args}`
-  );
+  console.log(`Starting "${workflowFn}" workflow with args: ${args}`);
 
   try {
-    const workflows = allWorkflows[workflowFile as keyof typeof allWorkflows];
-    if (!workflows) {
-      return Response.json(
-        { error: `Workflow file "${workflowFile}" not found` },
-        { status: 404 }
-      );
-    }
-
-    const workflow = workflows[workflowFn as keyof typeof workflows];
-    if (!workflow) {
-      return Response.json(
-        { error: `Function "${workflowFn}" not found in ${workflowFile}` },
-        { status: 400 }
-      );
-    }
-
-    const run = await start(workflow as any, args);
-    console.log('Run:', run.runId);
+    const run = await start(workflow as any, args as any);
+    console.log('Run', run.runId);
     return Response.json(run);
   } catch (err) {
     console.error(`Failed to start!!`, err);
@@ -97,13 +98,25 @@ export async function GET(req: Request) {
     const run = getRun(runId);
     const returnValue = await run.returnValue;
     console.log('Return value:', returnValue);
+
+    // Include run metadata in headers
+    const [createdAt, startedAt, completedAt] = await Promise.all([
+      run.createdAt,
+      run.startedAt,
+      run.completedAt,
+    ]);
+    const headers: HeadersInit =
+      returnValue instanceof ReadableStream
+        ? { 'Content-Type': 'application/octet-stream' }
+        : {};
+
+    headers['X-Workflow-Run-Created-At'] = createdAt?.toISOString() || '';
+    headers['X-Workflow-Run-Started-At'] = startedAt?.toISOString() || '';
+    headers['X-Workflow-Run-Completed-At'] = completedAt?.toISOString() || '';
+
     return returnValue instanceof ReadableStream
-      ? new Response(returnValue, {
-          headers: {
-            'Content-Type': 'application/octet-stream',
-          },
-        })
-      : Response.json(returnValue);
+      ? new Response(returnValue, { headers })
+      : Response.json(returnValue, { headers });
   } catch (error) {
     if (error instanceof Error) {
       if (WorkflowRunNotCompletedError.is(error)) {
