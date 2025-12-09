@@ -81,43 +81,47 @@ export class LocalBuilder extends BaseBuilder {
     tsBaseUrl?: string;
     tsPaths?: Record<string, string[]>;
   }) {
-    // Create steps route: well-known/workflow/v1/step.ts
-    // Should be .ts since that's what TanStack Router expects
-    const stepsRouteFile = join(workflowGeneratedDir, 'step.ts');
+    // Write the step bundle to a separate non-route file.
+    // The '-' prefix tells TanStack Router to ignore this file.
+    const stepsBundleFile = join(workflowGeneratedDir, '-step-bundle.ts');
     await this.createStepsBundle({
       format: 'esm',
       inputFiles,
-      outfile: stepsRouteFile,
+      outfile: stepsBundleFile,
       externalizeNonSteps: true,
       tsBaseUrl,
       tsPaths,
     });
 
-    let stepsRouteContent = await readFile(stepsRouteFile, 'utf-8');
+    let bundleContent = await readFile(stepsBundleFile, 'utf-8');
 
-    // Normalize request, needed for preserving request through TanStack
-    stepsRouteContent = stepsRouteContent.replace(
+    // Update the bundle file to export a handler function
+    bundleContent = bundleContent.replace(
       /export\s*\{\s*stepEntrypoint\s+as\s+POST\s*\}\s*;?$/m,
       `${NORMALIZE_REQUEST_CODE}
-export const POST = async ({ request }) => {
+export const handleStep = async (request: Request) => {
   const normalRequest = await normalizeRequest(request);
   return stepEntrypoint(normalRequest);
 };`
     );
+    bundleContent = `// @ts-nocheck\n${bundleContent}`;
+    await writeFile(stepsBundleFile, bundleContent);
 
-    stepsRouteContent = `// @ts-nocheck
-${stepsRouteContent}
+    // Create a small route file that imports from the bundle.
+    const stepsRouteFile = join(workflowGeneratedDir, 'step.ts');
+    const routeContent = `// @ts-nocheck
 import { createFileRoute } from "@tanstack/react-router"
+import { handleStep } from "./-step-bundle"
 
 export const Route = createFileRoute("/.well-known/workflow/v1/step")({
   server: {
     handlers: {
-      POST
+      POST: async ({ request }) => handleStep(request)
     }
   }
 });
 `;
-    await writeFile(stepsRouteFile, stepsRouteContent);
+    await writeFile(stepsRouteFile, routeContent);
   }
 
   private async buildWorkflowsRoute({
@@ -131,43 +135,50 @@ export const Route = createFileRoute("/.well-known/workflow/v1/step")({
     tsBaseUrl?: string;
     tsPaths?: Record<string, string[]>;
   }) {
-    // Create workflows route: .well-known/workflow/v1/flow.ts
-    // Should be .ts since that's what TanStack Router expects
-    const workflowRouteFile = join(workflowGeneratedDir, 'flow.ts');
+    // Write the large workflow bundle to a separate non-route file.
+    // The '-' prefix tells TanStack Router to ignore this file, preventing
+    // the parser from trying to parse the 3+ MB bundle which causes errors
+    // when HMR triggers during dev mode.
+    const workflowBundleFile = join(workflowGeneratedDir, '-flow-bundle.ts');
     await this.createWorkflowsBundle({
       format: 'esm',
-      outfile: join(workflowGeneratedDir, 'flow.ts'),
+      outfile: workflowBundleFile,
       bundleFinalOutput: false,
       inputFiles,
       tsBaseUrl,
       tsPaths,
     });
 
-    let workflowsRouteContent = await readFile(workflowRouteFile, 'utf-8');
+    let bundleContent = await readFile(workflowBundleFile, 'utf-8');
 
-    // Normalize request, needed for preserving request through TanStack
-    workflowsRouteContent = workflowsRouteContent.replace(
+    // Update the bundle file to export a handler function instead of POST
+    bundleContent = bundleContent.replace(
       /export const POST = workflowEntrypoint\(workflowCode\);?$/m,
       `${NORMALIZE_REQUEST_CODE}
-export const POST = async ({request}) => {
+export const handleWorkflow = async (request: Request) => {
   const normalRequest = await normalizeRequest(request);
   return workflowEntrypoint(workflowCode)(normalRequest);
 };`
     );
+    bundleContent = `// @ts-nocheck\n${bundleContent}`;
+    await writeFile(workflowBundleFile, bundleContent);
 
-    workflowsRouteContent = `// @ts-nocheck
-${workflowsRouteContent}
+    // Create a small route file that imports from the bundle.
+    // This file is small enough for TanStack Router to parse without issues.
+    const workflowRouteFile = join(workflowGeneratedDir, 'flow.ts');
+    const routeContent = `// @ts-nocheck
 import { createFileRoute } from "@tanstack/react-router"
+import { handleWorkflow } from "./-flow-bundle"
 
 export const Route = createFileRoute("/.well-known/workflow/v1/flow")({
   server: {
     handlers: {
-      POST
+      POST: async ({ request }) => handleWorkflow(request)
     }
   }
 });
 `;
-    await writeFile(workflowRouteFile, workflowsRouteContent);
+    await writeFile(workflowRouteFile, routeContent);
   }
 
   private async buildWebhookRoute({
