@@ -9,7 +9,7 @@
     "dev": "vite dev",
     "build": "vite build",
     "serve": "vite preview",
-    "start": "node ./scripts/start-with-pg.mjs"
+    "start": "node .output/server/index.mjs"
   },
   "license": "Apache-2.0",
   "dependencies": {
