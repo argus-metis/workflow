@@ -37,4 +37,5 @@ export default defineNitroConfig({
       };
     },
   },
+  plugins: ['plugins/start-pg-world.ts'],
 });
