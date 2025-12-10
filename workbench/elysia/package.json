@@ -7,7 +7,7 @@
     "prebuild": "pnpm generate:workflows",
     "build": "nitro build",
     "dev": "nitro dev",
-    "start": "node .output/server/index.mjs"
+    "start": "bun .output/server/index.mjs"
   },
   "dependencies": {
     "@workflow/world-postgres": "workspace:*",
