@@ -1,0 +1,198 @@
+---
+title: Contributing
+description: Learn how to contribute your workflow steps to the registry for others to use.
+---
+
+You can add your workflow step to the [registry](https://workflow.vercel.app/steps) by submitting a pull request that updates the `registry.json` file.
+
+## Prerequisites
+
+Before submitting your step, ensure you have:
+
+- Published your step package to npm (or it's a standalone step)
+- Documented your step with clear usage instructions
+- Tested your step with Vercel Workflow
+- Followed workflow best practices for durability and observability
+
+## Adding Your Step
+
+### 1. Fork and clone the repository
+
+```bash
+git clone https://github.com/vercel/workflow
+cd workflow
+```
+
+Follow the setup instructions in the main [CONTRIBUTING.md](https://github.com/vercel/workflow/blob/main/CONTRIBUTING.md) if available.
+
+### 2. Add your step entry
+
+Navigate to the docs directory and open `registry.json`:
+
+```bash
+cd docs
+```
+
+Add a new step object to the `items` array following this structure:
+
+```json
+{
+  "id": "your-step-slug",
+  "name": "Your Step Name",
+  "description": "Clear description of what your step does and its capabilities",
+  "category": "ai", // Options: ai, data, database, integration, utility
+  "type": "external", // or "native"
+  "author": "Your Name or Organization",
+  "featured": false,
+  "packageName": "your-package-name", // Optional: if published to npm
+  "tags": ["tag1", "tag2"],
+  "apiKeyEnvName": "YOUR_API_KEY", // Optional: environment variable name
+  "installCommand": {
+    "pnpm": "pnpm install your-package-name",
+    "npm": "npm install your-package-name",
+    "yarn": "yarn add your-package-name",
+    "bun": "bun add your-package-name"
+  },
+  "codeExample": "import { yourStep } from 'your-package-name';\n\nexport async function myWorkflow() {\n  \"use workflow\";\n  \n  const result = await yourStep({\n    // step configuration\n  });\n  \n  return result;\n}",
+  "docsUrl": "https://your-docs-url.com",
+  "apiKeyUrl": "https://your-api-key-url.com", // Optional
+  "websiteUrl": "https://your-website.com",
+  "npmUrl": "https://www.npmjs.com/package/your-package-name"
+}
+```
+
+### 3. Provide a working code example
+
+Your `codeExample` should:
+
+- Be a complete, working example
+- Show realistic usage of your step within a workflow
+- Include the `"use workflow"` directive
+- Use proper async/await patterns
+- Include necessary imports
+- Be tested to ensure it works
+
+Example:
+
+```typescript
+import { sendEmail } from '@acme/workflow-email';
+
+export async function notificationWorkflow(userId: string) {
+  "use workflow";
+  
+  // Fetch user data (durable step)
+  const user = await fetchUser(userId);
+  
+  // Send email (your custom step)
+  const result = await sendEmail({
+    to: user.email,
+    subject: 'Welcome!',
+    body: `Hello ${user.name}!`
+  });
+  
+  return result;
+}
+```
+
+### 4. Update the categories
+
+If you're adding a new category, update the `categories` array:
+
+```json
+{
+  "categories": [
+    {
+      "id": "your-category",
+      "name": "Your Category",
+      "description": "Description of this category"
+    }
+  ]
+}
+```
+
+Available categories:
+- **ai**: AI and machine learning operations
+- **data**: Data processing and transformation
+- **database**: Database queries and operations
+- **integration**: External service integrations
+- **utility**: Helper functions and utilities
+
+### 5. Submit your pull request
+
+```bash
+# Create a new branch
+git checkout -b feat/add-step-your-step-name
+
+# Add and commit your changes
+git add docs/registry.json
+git commit -m "feat(registry): add your-step-name"
+
+# Push and create a pull request
+git push origin feat/add-step-your-step-name
+```
+
+Use the PR title format: `feat(registry): add your-step-name`
+
+## Step Requirements
+
+### Code Quality
+
+- Follow TypeScript best practices
+- Include proper type definitions
+- Handle errors gracefully
+- Add JSDoc comments
+
+### Workflow Best Practices
+
+- Make steps idempotent where possible
+- Use appropriate timeouts
+- Include retry logic for transient failures
+- Avoid side effects in step definitions
+
+### Documentation
+
+Include in your step's README:
+
+- Clear description of what the step does
+- Installation instructions
+- Configuration options
+- Usage examples
+- Required environment variables
+- Dependencies
+
+### Testing
+
+Ensure your step:
+
+- Has unit tests
+- Has integration tests with Workflow
+- Works in both development and production
+- Handles edge cases appropriately
+
+## Review Process
+
+Once you submit your PR:
+
+1. Automated checks will verify your submission
+2. A maintainer will review your code and documentation
+3. You may be asked to make changes
+4. Once approved, your step will be added to the registry
+
+## Questions?
+
+If you have questions about adding your step to the registry:
+
+- Check the main [CONTRIBUTING.md](https://github.com/vercel/workflow/blob/main/CONTRIBUTING.md) guide
+- Review existing step entries in `registry.json` for examples
+- Browse the [step documentation](/steps)
+- Open an issue on [GitHub](https://github.com/vercel/workflow/issues)
+
+## Next Steps
+
+After your step is accepted:
+
+- Share it with the community
+- Keep it updated with new Workflow features
+- Respond to user feedback and issues
+- Consider contributing more steps!
+
