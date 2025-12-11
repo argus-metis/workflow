@@ -1,0 +1,8 @@
+{
+  "$schema": "https://ui.shadcn.com/registry-schema.json",
+  "name": "workflow-steps",
+  "description": "Pre-built workflow steps for Vercel Workflow",
+  "url": "https://workflow.vercel.app",
+  "items": [],
+  "categories": []
+}

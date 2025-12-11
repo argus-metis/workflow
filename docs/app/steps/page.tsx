@@ -1,11 +1,11 @@
 import type { Metadata } from 'next';
-import { StepsMarketplace } from './marketplace';
+import { StepsRegistry } from './registry';
 
 export const metadata: Metadata = {
-  title: 'Steps Marketplace',
+  title: 'Steps Registry',
   description: 'Browse and install pre-built workflow steps',
 };
 
 export default function StepsPage() {
-  return <StepsMarketplace />;
+  return <StepsRegistry />;
 }

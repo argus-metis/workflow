@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { type StepCategory, stepsData } from './steps-data';
 
-export function StepsMarketplace() {
+export function StepsRegistry() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<
     StepCategory | 'Any Category' | null
@@ -14,14 +14,29 @@ export function StepsMarketplace() {
 
   const categories: Array<StepCategory | 'Any Category'> = [
     'Any Category',
+    'AI Agents & Services',
     'AI',
-    'Storage',
+    'Analytics',
     'Authentication',
+    'CMS',
+    'Commerce',
+    'Database',
+    'DevTools',
+    'Experimentation',
+    'Flags',
+    'Logging',
     'Messaging',
-    'Data Processing',
-    'External Services',
-    'Utilities',
+    'Monitoring',
+    'Observability',
+    'Payments',
+    'Productivity',
+    'Searching',
+    'Security',
+    'Storage',
+    'Testing',
+    'Video',
     'Webhooks',
+    'Workflow',
   ];
 
   // Filter steps
@@ -39,7 +54,7 @@ export function StepsMarketplace() {
     <div className="flex min-h-screen flex-col">
       {/* Header */}
       <div className="border-b bg-background px-6 py-8">
-        <h1 className="mb-2 text-3xl font-bold tracking-tight">Marketplace</h1>
+        <h1 className="mb-2 text-3xl font-bold tracking-tight">Registry</h1>
       </div>
 
       <div className="flex flex-1">
@@ -116,21 +131,45 @@ export function StepsMarketplace() {
 function StepCard({ step }: { step: (typeof stepsData)[0] }) {
   const getCategoryBadgeColor = (category: StepCategory) => {
     const colors: Record<StepCategory, string> = {
+      'AI Agents & Services':
+        'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300',
       AI: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
-      Storage:
-        'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300',
+      Analytics:
+        'bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300',
       Authentication:
         'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300',
+      CMS: 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-950 dark:text-fuchsia-300',
+      Commerce:
+        'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
+      Database: 'bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300',
+      DevTools:
+        'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+      Experimentation:
+        'bg-lime-100 text-lime-700 dark:bg-lime-950 dark:text-lime-300',
+      Flags:
+        'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+      Logging:
+        'bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300',
       Messaging:
         'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',
-      'Data Processing':
+      Monitoring: 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300',
+      Observability:
+        'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300',
+      Payments:
+        'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300',
+      Productivity:
         'bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-300',
-      'External Services':
-        'bg-pink-100 text-pink-700 dark:bg-pink-950 dark:text-pink-300',
-      Utilities:
-        'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+      Searching:
+        'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300',
+      Security: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
+      Storage:
+        'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300',
+      Testing: 'bg-pink-100 text-pink-700 dark:bg-pink-950 dark:text-pink-300',
+      Video:
+        'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300',
       Webhooks:
         'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300',
+      Workflow: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
     };
     return colors[category];
   };

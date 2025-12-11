@@ -37,7 +37,7 @@ export async function generateMetadata({
   }
 
   return {
-    title: `${step.name} - Steps Marketplace`,
+    title: `${step.name} - Steps Registry`,
     description: step.description,
   };
 }
