@@ -7,7 +7,7 @@ import {
   WorkflowRunNotCompletedError,
 } from 'workflow/internal/errors';
 
-const app = new Elysia({ serve: { idleTimeout: 30 } })
+const app = new Elysia({ serve: { idleTimeout: 60 } })
   .get('/', async () => {
     return 'Hello from Elysia!';
   })
