@@ -13,7 +13,10 @@ export default defineNitroConfig({
   routes: {
     '/**': './src/index.ts',
   },
-  preset: 'bun',
+  // NOTE: `bun` preset doesn't work as expected since Nitro does not pass
+  // the `idleTimeout` option through Elysia, causing workflow suspensions > 10s
+  // to fail
+  // preset: "bun"
   externals: {
     external: elysiaExternals,
   },

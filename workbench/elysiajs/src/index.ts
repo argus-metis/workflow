@@ -7,7 +7,9 @@ import {
   WorkflowRunNotCompletedError,
 } from 'workflow/internal/errors';
 
-const app = new Elysia({ serve: { idleTimeout: 60 } })
+// `idleTimeout` doesn't actually work since Nitro doesn't
+// support this in their `bun` preset
+const app = new Elysia({ serve: { idleTimeout: 0 } })
   .get('/', async () => {
     return 'Hello from Elysia!';
   })
