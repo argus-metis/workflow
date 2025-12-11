@@ -87,6 +87,7 @@ export async function getNextBuilder() {
           '.ts',
           '.tsx',
           '.mts',
+          '.cts',
           '.cjs',
           '.mjs',
         ]);

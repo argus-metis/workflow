@@ -1,5 +1,34 @@
 # @workflow/web-shared
 
+## 4.0.1-beta.26
+
+### Patch Changes
+
+- [#575](https://github.com/vercel/workflow/pull/575) [`161c54c`](https://github.com/vercel/workflow/commit/161c54ca13e0c36220640e656b7abe4ff282dbb0) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Add Web and CLI UI for listing and viewing streams
+
+- [#572](https://github.com/vercel/workflow/pull/572) [`33c254c`](https://github.com/vercel/workflow/commit/33c254c82c1c452300d6bff531c33329aa01d4ec) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Refactor error handling to surface more error details and reduce code
+
+- [#562](https://github.com/vercel/workflow/pull/562) [`058757c`](https://github.com/vercel/workflow/commit/058757c476579a7b1bb6a8ba9a3d15f57b30c898) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Unify time helper functions
+
+- Updated dependencies [[`161c54c`](https://github.com/vercel/workflow/commit/161c54ca13e0c36220640e656b7abe4ff282dbb0), [`c82b467`](https://github.com/vercel/workflow/commit/c82b46720cf6284f3c7e3ded107e1d8321f6e705), [`0bbd26f`](https://github.com/vercel/workflow/commit/0bbd26f8c85a04dea3dc87a11c52e9ac63a18e84), [`c35b445`](https://github.com/vercel/workflow/commit/c35b4458753cc116b90d61f470f7ab1d964e8a1e), [`d3fd81d`](https://github.com/vercel/workflow/commit/d3fd81dffd87abbd1a3d8a8e91e9781959eefd40)]:
+  - @workflow/core@4.0.1-beta.25
+  - @workflow/world@4.0.1-beta.10
+  - @workflow/errors@4.0.1-beta.7
+
+## 4.0.1-beta.25
+
+### Patch Changes
+
+- 57a2c32: Add expiredAt attribute to Run
+- 14daedd: Refine span viewer panel UI: reduced font sizes and spacing, added connecting lines in detail cards, improved attribute layout with bordered containers. Improve status badge with colored indicators and optional duration, add overlay mode to copyable text, simplify stream detail back navigation
+- 4aecb99: Add workflow graph visualization to observability UI and o11y migration to nuqs for url state management
+- 24e6271: UI polish: inline durations, font fixes, trace viewer scrolling fix
+- 7969df9: Pretty-print large durations in trace viewer as days/hours/minutes/seconds instead of raw seconds
+- 8172455: Show expiredAt date in trace viewer, add tooltip
+- Updated dependencies [57a2c32]
+  - @workflow/world@4.0.1-beta.9
+  - @workflow/core@4.0.1-beta.24
+
 ## 4.0.1-beta.24
 
 ### Patch Changes

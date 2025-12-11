@@ -1,5 +1,31 @@
 # @workflow/world-local
 
+## 4.0.1-beta.16
+
+### Patch Changes
+
+- [#568](https://github.com/vercel/workflow/pull/568) [`d42a968`](https://github.com/vercel/workflow/commit/d42a9681a1c7139ac5ed2973b1738d8a9000a1b6) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Bump undici dependency to latest minor version
+
+- [#574](https://github.com/vercel/workflow/pull/574) [`c82b467`](https://github.com/vercel/workflow/commit/c82b46720cf6284f3c7e3ded107e1d8321f6e705) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Add listByRunId endpoint to Streamer interface
+
+- Updated dependencies [[`c82b467`](https://github.com/vercel/workflow/commit/c82b46720cf6284f3c7e3ded107e1d8321f6e705)]:
+  - @workflow/world@4.0.1-beta.10
+  - @workflow/errors@4.0.1-beta.7
+
+## 4.0.1-beta.15
+
+### Patch Changes
+
+- 48b3a12: perf: optimize for high-concurrency workflows
+
+  - Add in-memory cache for file existence checks to avoid expensive fs.access() calls
+  - Increase default concurrency limit from 20 to 100
+  - Improve HTTP connection pooling with undici Agent (100 connections, 30s keepalive)
+
+- Updated dependencies [57a2c32]
+  - @workflow/world@4.0.1-beta.9
+  - @workflow/errors@4.0.1-beta.7
+
 ## 4.0.1-beta.14
 
 ### Patch Changes

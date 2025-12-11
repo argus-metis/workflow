@@ -48,6 +48,8 @@ import {
 } from './util.js';
 import { runWorkflow } from './workflow.js';
 
+const DEFAULT_STEP_MAX_RETRIES = 3;
+
 export type { Event, WorkflowRun };
 export { WorkflowSuspension } from './global.js';
 export {
@@ -634,11 +636,13 @@ export const stepEntrypoint =
               );
             }
 
+            const maxRetries = stepFn.maxRetries ?? DEFAULT_STEP_MAX_RETRIES;
+
             span?.setAttributes({
               ...Attribute.WorkflowName(workflowName),
               ...Attribute.WorkflowRunId(workflowRunId),
               ...Attribute.StepId(stepId),
-              ...Attribute.StepMaxRetries(stepFn.maxRetries ?? 3),
+              ...Attribute.StepMaxRetries(maxRetries),
               ...Attribute.StepTracePropagated(!!traceContext),
             });
 
@@ -675,6 +679,45 @@ export const stepEntrypoint =
 
             let result: unknown;
             const attempt = step.attempt + 1;
+
+            // Check max retries FIRST before any state changes.
+            // This handles edge cases where the step handler is invoked after max retries have been exceeded
+            // (e.g., when the step repeatedly times out or fails before reaching the catch handler at line 822).
+            // Without this check, the step would retry forever.
+            if (attempt > maxRetries) {
+              const errorMessage = `Step "${stepName}" exceeded max retries (${attempt} attempts)`;
+              console.error(`[Workflows] "${workflowRunId}" - ${errorMessage}`);
+              // Update step status first (idempotent), then create event
+              await world.steps.update(workflowRunId, stepId, {
+                status: 'failed',
+                error: {
+                  message: errorMessage,
+                  stack: undefined,
+                },
+              });
+              await world.events.create(workflowRunId, {
+                eventType: 'step_failed',
+                correlationId: stepId,
+                eventData: {
+                  error: errorMessage,
+                  fatal: true,
+                },
+              });
+
+              span?.setAttributes({
+                ...Attribute.StepStatus('failed'),
+                ...Attribute.StepRetryExhausted(true),
+              });
+
+              // Re-invoke the workflow to handle the failed step
+              await queueMessage(world, `__wkf_workflow_${workflowName}`, {
+                runId: workflowRunId,
+                traceCarrier: await serializeTraceCarrier(),
+                requestedAt: new Date(),
+              });
+              return;
+            }
+
             try {
               if (!['pending', 'running'].includes(step.status)) {
                 // We should only be running the step if it's either
@@ -688,6 +731,28 @@ export const stepEntrypoint =
                   ...Attribute.StepSkipped(true),
                   ...Attribute.StepSkipReason(step.status),
                 });
+                // There's a chance that a step terminates correctly, but the underlying process
+                // fails or gets killed before the stepEntrypoint has a chance to re-enqueue the run.
+                // The queue lease expires and stepEntrypoint again, which leads us here, so
+                // we optimistically re-enqueue the workflow if the step is in a terminal state,
+                // under the assumption that this edge case happened.
+                // Until we move to atomic entity/event updates (World V2), there _could_ be an edge case
+                // where the we execute this code based on the `step` entity status, but the runtime
+                // failed to create the `step_completed` event (due to failing between step and event update),
+                // in which case, this might lead to an infinite loop.
+                // https://vercel.slack.com/archives/C09125LC4AX/p1765313809066679
+                const isTerminalStep = [
+                  'completed',
+                  'failed',
+                  'cancelled',
+                ].includes(step.status);
+                if (isTerminalStep) {
+                  await queueMessage(world, `__wkf_workflow_${workflowName}`, {
+                    runId: workflowRunId,
+                    traceCarrier: await serializeTraceCarrier(),
+                    requestedAt: new Date(),
+                  });
+                }
                 return;
               }
 
@@ -825,14 +890,15 @@ export const stepEntrypoint =
                   ...Attribute.StepFatalError(true),
                 });
               } else {
-                const maxRetries = stepFn.maxRetries ?? 3;
+                const maxRetries =
+                  stepFn.maxRetries ?? DEFAULT_STEP_MAX_RETRIES;
 
                 span?.setAttributes({
                   ...Attribute.StepAttempt(attempt),
                   ...Attribute.StepMaxRetries(maxRetries),
                 });
 
-                if (attempt >= maxRetries) {
+                if (attempt > maxRetries) {
                   // Max retries reached
                   const errorStack = getErrorStack(err);
                   const stackLines = errorStack.split('\n').slice(0, 4);

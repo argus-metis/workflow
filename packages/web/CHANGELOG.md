@@ -1,5 +1,24 @@
 # @workflow/web
 
+## 4.0.1-beta.15
+
+### Patch Changes
+
+- [#575](https://github.com/vercel/workflow/pull/575) [`161c54c`](https://github.com/vercel/workflow/commit/161c54ca13e0c36220640e656b7abe4ff282dbb0) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Add Web and CLI UI for listing and viewing streams
+
+- [#572](https://github.com/vercel/workflow/pull/572) [`33c254c`](https://github.com/vercel/workflow/commit/33c254c82c1c452300d6bff531c33329aa01d4ec) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Refactor error handling to surface more error details and reduce code
+
+- [#562](https://github.com/vercel/workflow/pull/562) [`058757c`](https://github.com/vercel/workflow/commit/058757c476579a7b1bb6a8ba9a3d15f57b30c898) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Unify time helper functions
+
+## 4.0.1-beta.14
+
+### Patch Changes
+
+- 14daedd: Refine span viewer panel UI: reduced font sizes and spacing, added connecting lines in detail cards, improved attribute layout with bordered containers. Improve status badge with colored indicators and optional duration, add overlay mode to copyable text, simplify stream detail back navigation
+- 4aecb99: Add workflow graph visualization to observability UI and o11y migration to nuqs for url state management
+- 24e6271: UI polish: inline durations, font fixes, trace viewer scrolling fix
+- 8172455: Show expiredAt date in trace viewer, add tooltip
+
 ## 4.0.1-beta.13
 
 ### Patch Changes
