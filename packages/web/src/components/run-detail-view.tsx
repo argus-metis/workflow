@@ -10,7 +10,13 @@ import {
   type WorkflowRun,
   WorkflowTraceViewer,
 } from '@workflow/web-shared';
-import { AlertCircle, HelpCircle, List, Loader2, Network } from 'lucide-react';
+import {
+  AlertCircle,
+  GitBranch,
+  HelpCircle,
+  List,
+  Loader2,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useMemo, useState } from 'react';
@@ -96,9 +102,9 @@ export function RunDetailView({
   );
 
   const setActiveTab = useCallback(
-    (tab: 'trace' | 'streams') => {
-      // When switching to trace tab, clear streamId
-      if (tab === 'trace') {
+    (tab: 'trace' | 'graph' | 'streams') => {
+      // When switching to trace or graph tab, clear streamId
+      if (tab === 'trace' || tab === 'graph') {
         updateSearchParams({ tab, streamId: null });
       } else {
         updateSearchParams({ tab });
@@ -453,7 +459,9 @@ export function RunDetailView({
         <div className="mt-4 flex-1 flex flex-col min-h-0">
           <Tabs
             value={activeTab}
-            onValueChange={(v) => setActiveTab(v as 'trace' | 'streams')}
+            onValueChange={(v) =>
+              setActiveTab(v as 'trace' | 'graph' | 'streams')
+            }
             className="flex-1 flex flex-col min-h-0"
           >
             <TabsList className="mb-4 flex-none">
@@ -461,14 +469,14 @@ export function RunDetailView({
                 <List className="h-4 w-4" />
                 Trace
               </TabsTrigger>
+              <TabsTrigger value="graph" className="gap-2">
+                <GitBranch className="h-4 w-4" />
+                Graph
+              </TabsTrigger>
               <TabsTrigger value="streams" className="gap-2">
                 <List className="h-4 w-4" />
                 Streams
               </TabsTrigger>
-              {/* <TabsTrigger value="graph" className="gap-2">
-                <Network className="h-4 w-4" />
-                Graph
-              </TabsTrigger> */}
             </TabsList>
 
             <TabsContent value="trace" className="mt-0 flex-1 min-h-0">
@@ -547,7 +555,11 @@ export function RunDetailView({
                 {/* Stream viewer */}
                 <div className="flex-1 min-w-0">
                   {selectedStreamId ? (
-                    <StreamViewer env={env} streamId={selectedStreamId} />
+                    <StreamViewer
+                      env={env}
+                      runId={runId}
+                      streamId={selectedStreamId}
+                    />
                   ) : (
                     <div
                       className="h-full flex items-center justify-center rounded-lg border"
