@@ -64,7 +64,12 @@ function getConfigKey(config: WorldConfig): string {
   if (config.project) keyObj.project = config.project;
   if (config.team) keyObj.team = config.team;
   if (config.dataDir) keyObj.dataDir = config.dataDir;
-  if (config.postgresUrl) keyObj.postgresUrl = config.postgresUrl;
+  // Only include a hash of the postgres URL to avoid exposing credentials
+  if (config.postgresUrl) {
+    // Simple hash to avoid exposing credentials in session storage
+    keyObj.postgresUrlHash =
+      config.postgresUrl.split('@')[1] || config.postgresUrl;
+  }
 
   return JSON.stringify(keyObj);
 }
@@ -99,7 +104,8 @@ async function checkEndpointHealth(
     );
     const response = await fetch(url.toString(), {
       method: 'POST',
-      signal,
+      // Use provided signal or default to 5 second timeout
+      signal: signal || AbortSignal.timeout(5000),
     });
 
     if (response.ok) {
@@ -154,7 +160,6 @@ export function EndpointsHealthStatus({ config }: EndpointsHealthStatusProps) {
 
     // Otherwise, perform the health check
     const abortController = new AbortController();
-    let isMounted = true;
 
     const performHealthCheck = async () => {
       setIsChecking(true);
@@ -164,8 +169,8 @@ export function EndpointsHealthStatus({ config }: EndpointsHealthStatusProps) {
         checkEndpointHealth(baseUrl, 'step', abortController.signal),
       ]);
 
-      // Only update state if component is still mounted
-      if (!isMounted) {
+      // Check if request was aborted (component unmounted)
+      if (abortController.signal.aborted) {
         return;
       }
 
@@ -184,9 +189,8 @@ export function EndpointsHealthStatus({ config }: EndpointsHealthStatusProps) {
 
     performHealthCheck();
 
-    // Cleanup function to cancel in-flight requests and mark as unmounted
+    // Cleanup function to cancel in-flight requests
     return () => {
-      isMounted = false;
       abortController.abort();
     };
   }, [config]);
