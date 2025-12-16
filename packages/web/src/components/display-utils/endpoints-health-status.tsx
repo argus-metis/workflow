@@ -52,13 +52,45 @@ function setSessionHealthCheck(
 }
 
 function getConfigKey(config: WorldConfig): string {
-  // Create a unique key based on relevant config values
-  return `${config.backend || 'local'}-${config.port || '3000'}`;
+  // Create a unique key based on all relevant config values that uniquely identify the backend
+  // Include backend, port, and backend-specific fields
+  const keyObj: Record<string, unknown> = {
+    backend: config.backend || 'local',
+    port: config.port || '3000',
+  };
+
+  // Add backend-specific fields
+  if (config.env) keyObj.env = config.env;
+  if (config.project) keyObj.project = config.project;
+  if (config.team) keyObj.team = config.team;
+  if (config.dataDir) keyObj.dataDir = config.dataDir;
+  if (config.postgresUrl) keyObj.postgresUrl = config.postgresUrl;
+
+  return JSON.stringify(keyObj);
+}
+
+function getBaseUrl(config: WorldConfig): string | null {
+  const backend = config.backend || 'local';
+
+  if (backend === 'local') {
+    const port = config.port || '3000';
+    return `http://localhost:${port}`;
+  }
+
+  // For Vercel backend, we can't perform health checks from the browser
+  // as the endpoints are not accessible via HTTP
+  if (backend === 'vercel') {
+    return null;
+  }
+
+  // For other backends like postgres, also not directly accessible
+  return null;
 }
 
 async function checkEndpointHealth(
   baseUrl: string,
-  endpoint: 'flow' | 'step'
+  endpoint: 'flow' | 'step',
+  signal?: AbortSignal
 ): Promise<{ success: boolean; message: string }> {
   try {
     const url = new URL(
@@ -67,8 +99,7 @@ async function checkEndpointHealth(
     );
     const response = await fetch(url.toString(), {
       method: 'POST',
-      // Short timeout for health checks
-      signal: AbortSignal.timeout(5000),
+      signal,
     });
 
     if (response.ok) {
@@ -103,18 +134,40 @@ export function EndpointsHealthStatus({ config }: EndpointsHealthStatusProps) {
       return;
     }
 
+    // Determine base URL based on config
+    const baseUrl = getBaseUrl(config);
+
+    // If backend doesn't support health checks (e.g., Vercel, Postgres),
+    // don't perform the check
+    if (!baseUrl) {
+      const result: HealthCheckResult = {
+        flow: 'error',
+        step: 'error',
+        flowMessage: 'Health checks not supported for this backend',
+        stepMessage: 'Health checks not supported for this backend',
+        checkedAt: new Date().toISOString(),
+      };
+      setHealthCheck(result);
+      setSessionHealthCheck(configKey, result);
+      return;
+    }
+
     // Otherwise, perform the health check
+    const abortController = new AbortController();
+    let isMounted = true;
+
     const performHealthCheck = async () => {
       setIsChecking(true);
 
-      // Determine base URL based on config
-      const port = config.port || '3000';
-      const baseUrl = `http://localhost:${port}`;
-
       const [flowResult, stepResult] = await Promise.all([
-        checkEndpointHealth(baseUrl, 'flow'),
-        checkEndpointHealth(baseUrl, 'step'),
+        checkEndpointHealth(baseUrl, 'flow', abortController.signal),
+        checkEndpointHealth(baseUrl, 'step', abortController.signal),
       ]);
+
+      // Only update state if component is still mounted
+      if (!isMounted) {
+        return;
+      }
 
       const result: HealthCheckResult = {
         flow: flowResult.success ? 'success' : 'error',
@@ -130,6 +183,12 @@ export function EndpointsHealthStatus({ config }: EndpointsHealthStatusProps) {
     };
 
     performHealthCheck();
+
+    // Cleanup function to cancel in-flight requests and mark as unmounted
+    return () => {
+      isMounted = false;
+      abortController.abort();
+    };
   }, [config]);
 
   const allSuccess =
