@@ -1,7 +1,7 @@
 'use server';
 
 import { existsSync, readdirSync } from 'node:fs';
-import { join, resolve, isAbsolute, basename } from 'node:path';
+import { join, resolve, isAbsolute } from 'node:path';
 
 export interface DataDirCheckResult {
   /** Whether a valid workflow data directory was found */
@@ -122,4 +122,21 @@ export async function validateDataDir(
   }
 
   return { valid: true };
+}
+
+/**
+ * Resolve a path to an absolute path.
+ * If the path is already absolute, returns it unchanged.
+ * If relative, resolves it relative to the current working directory.
+ */
+export async function resolveToAbsolutePath(
+  inputPath: string
+): Promise<string> {
+  if (!inputPath) return inputPath;
+
+  if (isAbsolute(inputPath)) {
+    return inputPath;
+  }
+
+  return resolve(process.cwd(), inputPath);
 }

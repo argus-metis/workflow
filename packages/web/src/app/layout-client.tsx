@@ -10,6 +10,7 @@ import { SettingsDropdown } from '@/components/settings-dropdown';
 import { Toaster } from '@/components/ui/sonner';
 import { buildUrlWithConfig, useQueryParamConfig } from '@/lib/config';
 import { useConfigHealth } from '@/lib/hooks';
+import { saveRecentConfig } from '@/lib/recent-configs';
 import { Logo } from '../icons/logo';
 
 interface LayoutClientProps {
@@ -89,7 +90,8 @@ function LayoutContent({ children }: LayoutClientProps) {
       return;
     }
 
-    // Config is valid - mark as checked
+    // Config is valid - save to recent configs and mark as checked
+    saveRecentConfig(config);
     hasCheckedConfigRef.current = true;
   }, [pathname, needsConfig, configHealth, isCheckingConfig, config, router]);
 
@@ -197,15 +199,14 @@ function LayoutContent({ children }: LayoutClientProps) {
     );
   }
 
-  // Setup page renders without the main app header/chrome
-  if (pathname === '/setup') {
-    return (
-      <TooltipProvider delayDuration={0}>
-        {children}
-        <Toaster />
-      </TooltipProvider>
-    );
-  }
+  const isSetupPage = pathname === '/setup';
+  const isConnected = configHealth?.valid ?? false;
+
+  // Build URLs for navigation
+  const setupUrl = buildUrlWithConfig('/setup', config, {
+    redirectTo: pathname,
+  });
+  const backUrl = buildUrlWithConfig('/', config);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -222,7 +223,13 @@ function LayoutContent({ children }: LayoutClientProps) {
               </h1>
             </Link>
             <div className="ml-auto flex items-center gap-2">
-              <ConnectionStatus config={config} />
+              <ConnectionStatus
+                config={config}
+                isSetupPage={isSetupPage}
+                isConnected={isConnected}
+                setupUrl={isSetupPage ? undefined : setupUrl}
+                backUrl={isSetupPage ? backUrl : undefined}
+              />
               <SettingsDropdown />
             </div>
           </div>
