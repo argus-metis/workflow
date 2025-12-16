@@ -114,6 +114,10 @@ For advanced use cases like HTTPS or custom hostnames, you can override the enti
 export WORKFLOW_LOCAL_BASE_URL=https://local.example.com:3000
 ```
 
+**Nuxt / Nitro runtime config (optional):**
+
+If you're using Nuxt (or Nitro directly), configure the origin via runtime config and let the `workflow/nitro` module map it to `WORKFLOW_LOCAL_BASE_URL` internally at runtime.
+
 **Programmatically:**
 
 ```typescript
