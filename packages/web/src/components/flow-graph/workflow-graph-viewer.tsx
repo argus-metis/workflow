@@ -726,22 +726,22 @@ function convertToReactFlowNodes(workflow: WorkflowGraph): Node[] {
 function convertToReactFlowEdges(workflow: WorkflowGraph): Edge[] {
   const { additionalEdges } = calculateEnhancedLayout(workflow);
 
-  // Filter out original loop edges - we'll use our own clean loop-back edges
-  const originalEdgesFiltered = workflow.edges.filter((edge) => {
-    // Skip original loop edges that go backwards (we add our own)
-    if (edge.type === 'loop') {
-      const sourceNum = parseInt(edge.source.replace('node_', '')) || 0;
-      const targetNum = parseInt(edge.target.replace('node_', '')) || 0;
-      if (targetNum <= sourceNum) {
-        return false; // Skip backward loop edges
-      }
+  // Transform original loop edges into loop_back_ edges (they go from exit nodes back to entry nodes)
+  // and keep all other edges as-is
+  const transformedOriginalEdges = workflow.edges.map((e) => {
+    if (e.type === 'loop') {
+      return {
+        ...e,
+        id: `loop_back_${e.source}_${e.target}`,
+        isOriginal: true,
+      };
     }
-    return true;
+    return { ...e, isOriginal: true };
   });
 
-  // Combine original edges with additional loop-back edges
+  // Combine original edges with additional self-loop edges
   const rawEdges = [
-    ...originalEdgesFiltered.map((e) => ({ ...e, isOriginal: true })),
+    ...transformedOriginalEdges,
     ...additionalEdges.map((e) => ({ ...e, isOriginal: false })),
   ];
 

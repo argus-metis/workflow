@@ -992,12 +992,22 @@ function convertToReactFlowEdges(
 ): Edge[] {
   const { additionalEdges } = calculateEnhancedLayout(workflow);
 
-  // Filter out original loop edges - we replace them with a single clean loop-back edge
-  const originalEdgesFiltered = workflow.edges.filter((e) => e.type !== 'loop');
+  // Transform original loop edges into loop_back_ edges (they go from exit nodes back to entry nodes)
+  // and keep all other edges as-is
+  const transformedOriginalEdges = workflow.edges.map((e) => {
+    if (e.type === 'loop') {
+      return {
+        ...e,
+        id: `loop_back_${e.source}_${e.target}`,
+        isOriginal: true,
+      };
+    }
+    return { ...e, isOriginal: true };
+  });
 
-  // Combine original edges with additional loop-back edges
+  // Combine original edges with additional self-loop edges
   const rawEdges = [
-    ...originalEdgesFiltered.map((e) => ({ ...e, isOriginal: true })),
+    ...transformedOriginalEdges,
     ...additionalEdges.map((e) => ({ ...e, isOriginal: false })),
   ];
 
