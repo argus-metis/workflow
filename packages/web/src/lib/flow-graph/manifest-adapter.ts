@@ -63,7 +63,9 @@ function calculateNodePositions(
           | 'workflow_start'
           | 'workflow_end'
           | 'step'
-          | 'primitive',
+          | 'primitive'
+          | 'agent'
+          | 'tool',
         stepId: node.data.stepId,
       },
       metadata: node.metadata,
@@ -152,7 +154,9 @@ function calculateNodePositions(
           | 'workflow_start'
           | 'workflow_end'
           | 'step'
-          | 'primitive',
+          | 'primitive'
+          | 'agent'
+          | 'tool',
         stepId: node.data.stepId,
       },
       metadata: node.metadata,

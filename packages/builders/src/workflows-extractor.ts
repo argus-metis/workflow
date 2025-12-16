@@ -66,6 +66,14 @@ export interface NodeMetadata {
   isStepReference?: boolean;
   /** Context where the step reference was found (e.g., "tools.getWeather.execute") */
   referenceContext?: string;
+  /** This node is a tool step connected to a DurableAgent */
+  isTool?: boolean;
+  /** The name of the tool (key in tools object) */
+  toolName?: string;
+  /** This node represents a collection of tools (imported variable) */
+  isToolsCollection?: boolean;
+  /** The variable name of the tools collection */
+  toolsVariable?: string;
 }
 
 /**
@@ -89,7 +97,7 @@ export interface ManifestEdge {
   id: string;
   source: string;
   target: string;
-  type: 'default' | 'loop' | 'conditional' | 'parallel';
+  type: 'default' | 'loop' | 'conditional' | 'parallel' | 'tool';
   label?: string;
 }
 
@@ -168,8 +176,9 @@ export async function extractWorkflowGraphs(bundlePath: string): Promise<{
 
     const stepDeclarations = extractStepDeclarations(actualWorkflowCode);
     const functionMap = buildFunctionMap(ast, stepDeclarations);
+    const variableMap = buildVariableMap(ast);
 
-    return extractWorkflows(ast, stepDeclarations, functionMap);
+    return extractWorkflows(ast, stepDeclarations, functionMap, variableMap);
   } catch (error) {
     console.error('Failed to extract workflow graphs from bundle:', error);
     return {};
@@ -282,12 +291,38 @@ function buildFunctionMap(
 }
 
 /**
+ * Build a map of variable definitions (objects) for tool resolution
+ * This allows us to resolve tools objects to the actual tools object
+ */
+function buildVariableMap(ast: Program): Map<string, any> {
+  const variableMap = new Map<string, any>();
+
+  for (const item of ast.body) {
+    if (item.type === 'VariableDeclaration') {
+      const varDecl = item as VariableDeclaration;
+      for (const decl of varDecl.declarations) {
+        if (
+          decl.type === 'VariableDeclarator' &&
+          decl.id.type === 'Identifier' &&
+          decl.init?.type === 'ObjectExpression'
+        ) {
+          variableMap.set(decl.id.value, decl.init);
+        }
+      }
+    }
+  }
+
+  return variableMap;
+}
+
+/**
  * Extract workflows from AST
  */
 function extractWorkflows(
   ast: Program,
   stepDeclarations: Map<string, { stepId: string }>,
-  functionMap: Map<string, FunctionInfo>
+  functionMap: Map<string, FunctionInfo>,
+  variableMap: Map<string, any>
 ): {
   [filePath: string]: {
     [workflowName: string]: ManifestWorkflowEntry;
@@ -319,7 +354,8 @@ function extractWorkflows(
         func,
         workflowName,
         stepDeclarations,
-        functionMap
+        functionMap,
+        variableMap
       );
 
       if (!result[filePath]) {
@@ -373,7 +409,8 @@ function analyzeWorkflowFunction(
   func: FunctionDeclaration,
   workflowName: string,
   stepDeclarations: Map<string, { stepId: string }>,
-  functionMap: Map<string, FunctionInfo>
+  functionMap: Map<string, FunctionInfo>,
+  variableMap: Map<string, any>
 ): WorkflowGraphData {
   const nodes: ManifestNode[] = [];
   const edges: ManifestEdge[] = [];
@@ -405,7 +442,8 @@ function analyzeWorkflowFunction(
         stmt,
         stepDeclarations,
         context,
-        functionMap
+        functionMap,
+        variableMap
       );
 
       nodes.push(...result.nodes);
@@ -466,7 +504,8 @@ function analyzeStatement(
   stmt: Statement,
   stepDeclarations: Map<string, { stepId: string }>,
   context: AnalysisContext,
-  functionMap: Map<string, FunctionInfo>
+  functionMap: Map<string, FunctionInfo>,
+  variableMap: Map<string, any>
 ): AnalysisResult {
   const nodes: ManifestNode[] = [];
   const edges: ManifestEdge[] = [];
@@ -481,7 +520,8 @@ function analyzeStatement(
           decl.init,
           stepDeclarations,
           context,
-          functionMap
+          functionMap,
+          variableMap
         );
         nodes.push(...result.nodes);
         edges.push(...result.edges);
@@ -509,7 +549,8 @@ function analyzeStatement(
       stmt.expression,
       stepDeclarations,
       context,
-      functionMap
+      functionMap,
+      variableMap
     );
     nodes.push(...result.nodes);
     edges.push(...result.edges);
@@ -527,7 +568,8 @@ function analyzeStatement(
         stmt.consequent.stmts,
         stepDeclarations,
         context,
-        functionMap
+        functionMap,
+        variableMap
       );
 
       for (const node of branchResult.nodes) {
@@ -548,7 +590,8 @@ function analyzeStatement(
         stmt.consequent,
         stepDeclarations,
         context,
-        functionMap
+        functionMap,
+        variableMap
       );
 
       for (const node of branchResult.nodes) {
@@ -570,7 +613,8 @@ function analyzeStatement(
         stmt.alternate.stmts,
         stepDeclarations,
         context,
-        functionMap
+        functionMap,
+        variableMap
       );
 
       for (const node of branchResult.nodes) {
@@ -593,7 +637,8 @@ function analyzeStatement(
         stmt.alternate,
         stepDeclarations,
         context,
-        functionMap
+        functionMap,
+        variableMap
       );
 
       for (const node of branchResult.nodes) {
@@ -627,7 +672,8 @@ function analyzeStatement(
         body.stmts,
         stepDeclarations,
         context,
-        functionMap
+        functionMap,
+        variableMap
       );
 
       for (const node of loopResult.nodes) {
@@ -656,7 +702,8 @@ function analyzeStatement(
         body,
         stepDeclarations,
         context,
-        functionMap
+        functionMap,
+        variableMap
       );
 
       for (const node of loopResult.nodes) {
@@ -697,7 +744,8 @@ function analyzeStatement(
         body.stmts,
         stepDeclarations,
         context,
-        functionMap
+        functionMap,
+        variableMap
       );
 
       for (const node of loopResult.nodes) {
@@ -727,7 +775,8 @@ function analyzeStatement(
         body,
         stepDeclarations,
         context,
-        functionMap
+        functionMap,
+        variableMap
       );
 
       for (const node of loopResult.nodes) {
@@ -762,7 +811,8 @@ function analyzeStatement(
       (stmt as BlockStatement).stmts,
       stepDeclarations,
       context,
-      functionMap
+      functionMap,
+      variableMap
     );
     nodes.push(...blockResult.nodes);
     edges.push(...blockResult.edges);
@@ -775,7 +825,8 @@ function analyzeStatement(
       (stmt as any).argument,
       stepDeclarations,
       context,
-      functionMap
+      functionMap,
+      variableMap
     );
     nodes.push(...result.nodes);
     edges.push(...result.edges);
@@ -793,7 +844,8 @@ function analyzeBlock(
   stmts: Statement[],
   stepDeclarations: Map<string, { stepId: string }>,
   context: AnalysisContext,
-  functionMap: Map<string, FunctionInfo>
+  functionMap: Map<string, FunctionInfo>,
+  variableMap: Map<string, any>
 ): AnalysisResult {
   const nodes: ManifestNode[] = [];
   const edges: ManifestEdge[] = [];
@@ -805,7 +857,8 @@ function analyzeBlock(
       stmt,
       stepDeclarations,
       context,
-      functionMap
+      functionMap,
+      variableMap
     );
 
     if (result.nodes.length === 0) continue;
@@ -850,6 +903,7 @@ function analyzeExpression(
   stepDeclarations: Map<string, { stepId: string }>,
   context: AnalysisContext,
   functionMap: Map<string, FunctionInfo>,
+  variableMap: Map<string, any>,
   visitedFunctions: Set<string> = new Set()
 ): AnalysisResult {
   const nodes: ManifestNode[] = [];
@@ -884,6 +938,7 @@ function analyzeExpression(
                       stepDeclarations,
                       context,
                       functionMap,
+                      variableMap,
                       visitedFunctions
                     );
 
@@ -909,6 +964,7 @@ function analyzeExpression(
                   stepDeclarations,
                   context,
                   functionMap,
+                  variableMap,
                   visitedFunctions
                 );
 
@@ -994,6 +1050,7 @@ function analyzeExpression(
             stepDeclarations,
             context,
             functionMap,
+            variableMap,
             visitedFunctions
           );
           nodes.push(...transitiveResult.nodes);
@@ -1084,6 +1141,7 @@ function analyzeExpression(
           stepDeclarations,
           context,
           functionMap,
+          variableMap,
           visitedFunctions
         );
         nodes.push(...transitiveResult.nodes);
@@ -1187,7 +1245,53 @@ function analyzeExpression(
   // Check for step references in 'new' expressions
   if (expr.type === 'NewExpression') {
     const newExpr = expr as any;
-    if (newExpr.arguments) {
+
+    // Check if this is a DurableAgent instantiation
+    const isDurableAgent =
+      newExpr.callee?.type === 'Identifier' &&
+      newExpr.callee?.value === 'DurableAgent';
+
+    if (isDurableAgent && newExpr.arguments?.length > 0) {
+      // Create a node for the DurableAgent itself
+      const agentNodeId = `node_${context.nodeCounter++}`;
+      const agentNode: ManifestNode = {
+        id: agentNodeId,
+        type: 'agent',
+        data: {
+          label: 'DurableAgent',
+          nodeKind: 'agent',
+        },
+        metadata: {
+          isStepReference: true,
+          referenceContext: 'DurableAgent',
+        },
+      };
+      nodes.push(agentNode);
+      entryNodeIds.push(agentNodeId);
+
+      // Look for tools in the constructor options
+      const optionsArg = newExpr.arguments[0]?.expression;
+      if (optionsArg?.type === 'ObjectExpression') {
+        const toolsResult = analyzeDurableAgentTools(
+          optionsArg,
+          stepDeclarations,
+          context,
+          agentNodeId,
+          variableMap
+        );
+        nodes.push(...toolsResult.nodes);
+        edges.push(...toolsResult.edges);
+
+        // If we found tools, they are the exit nodes
+        if (toolsResult.exitNodeIds.length > 0) {
+          exitNodeIds.push(...toolsResult.exitNodeIds);
+        } else {
+          exitNodeIds.push(agentNodeId);
+        }
+      } else {
+        exitNodeIds.push(agentNodeId);
+      }
+    } else if (newExpr.arguments) {
       for (const arg of newExpr.arguments) {
         if (arg.expression?.type === 'ObjectExpression') {
           const refResult = analyzeObjectForStepReferences(
@@ -1214,6 +1318,7 @@ function analyzeExpression(
         stepDeclarations,
         context,
         functionMap,
+        variableMap,
         visitedFunctions
       );
       nodes.push(...rightResult.nodes);
@@ -1274,6 +1379,140 @@ function analyzeExpression(
             }
           }
         }
+      }
+    }
+  }
+
+  return { nodes, edges, entryNodeIds, exitNodeIds };
+}
+
+/**
+ * Analyze DurableAgent tools property to extract tool nodes
+ */
+function analyzeDurableAgentTools(
+  optionsObj: any,
+  stepDeclarations: Map<string, { stepId: string }>,
+  context: AnalysisContext,
+  agentNodeId: string,
+  variableMap: Map<string, any>
+): AnalysisResult {
+  const nodes: ManifestNode[] = [];
+  const edges: ManifestEdge[] = [];
+  const entryNodeIds: string[] = [];
+  const exitNodeIds: string[] = [];
+
+  if (!optionsObj.properties)
+    return { nodes, edges, entryNodeIds, exitNodeIds };
+
+  // Helper function to extract tools from an ObjectExpression
+  function extractToolsFromObject(toolsObj: any): void {
+    for (const toolProp of toolsObj.properties || []) {
+      if (toolProp.type !== 'KeyValueProperty') continue;
+
+      let toolName = '';
+      if (toolProp.key.type === 'Identifier') {
+        toolName = toolProp.key.value;
+      }
+
+      if (!toolName) continue;
+
+      // Look for execute property in the tool definition
+      if (toolProp.value.type === 'ObjectExpression') {
+        for (const innerProp of toolProp.value.properties || []) {
+          if (innerProp.type !== 'KeyValueProperty') continue;
+
+          let innerKey = '';
+          if (innerProp.key.type === 'Identifier') {
+            innerKey = innerProp.key.value;
+          }
+
+          if (innerKey === 'execute' && innerProp.value.type === 'Identifier') {
+            const stepName = innerProp.value.value;
+            const stepInfo = stepDeclarations.get(stepName);
+
+            const nodeId = `node_${context.nodeCounter++}`;
+            const node: ManifestNode = {
+              id: nodeId,
+              type: 'tool',
+              data: {
+                label: stepName,
+                nodeKind: 'tool',
+                stepId: stepInfo?.stepId,
+              },
+              metadata: {
+                isTool: true,
+                toolName: toolName,
+                referenceContext: `tools.${toolName}.execute`,
+              },
+            };
+            nodes.push(node);
+            exitNodeIds.push(nodeId);
+
+            // Connect agent to this tool with tool edge type
+            edges.push({
+              id: `e_${agentNodeId}_${nodeId}`,
+              source: agentNodeId,
+              target: nodeId,
+              type: 'tool',
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Find the 'tools' property
+  for (const prop of optionsObj.properties) {
+    if (prop.type !== 'KeyValueProperty') continue;
+
+    let keyName = '';
+    if (prop.key.type === 'Identifier') {
+      keyName = prop.key.value;
+    }
+
+    if (keyName !== 'tools') continue;
+
+    // Handle inline tools object
+    if (prop.value.type === 'ObjectExpression') {
+      extractToolsFromObject(prop.value);
+    }
+
+    // Handle tools as a variable reference - resolve it from variableMap
+    if (prop.value.type === 'Identifier') {
+      const toolsVarName = prop.value.value;
+
+      // Try to resolve the variable from the variableMap (bundled code)
+      const resolvedToolsObj = variableMap.get(toolsVarName);
+
+      if (resolvedToolsObj && resolvedToolsObj.type === 'ObjectExpression') {
+        // Successfully resolved - extract individual tools
+        extractToolsFromObject(resolvedToolsObj);
+      } else {
+        // Fallback: create a placeholder node if we can't resolve
+        const nodeId = `node_${context.nodeCounter++}`;
+        const node: ManifestNode = {
+          id: nodeId,
+          type: 'tool',
+          data: {
+            label: `${toolsVarName}`,
+            nodeKind: 'tool',
+          },
+          metadata: {
+            isToolsCollection: true,
+            toolsVariable: toolsVarName,
+            referenceContext: `tools:${toolsVarName}`,
+          },
+        };
+        nodes.push(node);
+        exitNodeIds.push(nodeId);
+
+        // Connect agent to tools with tool edge type
+        edges.push({
+          id: `e_${agentNodeId}_${nodeId}`,
+          source: agentNodeId,
+          target: nodeId,
+          type: 'tool',
+        });
       }
     }
   }
@@ -1358,6 +1597,7 @@ function analyzeTransitiveCall(
   stepDeclarations: Map<string, { stepId: string }>,
   context: AnalysisContext,
   functionMap: Map<string, FunctionInfo>,
+  variableMap: Map<string, any>,
   visitedFunctions: Set<string>
 ): AnalysisResult {
   const nodes: ManifestNode[] = [];
@@ -1383,7 +1623,8 @@ function analyzeTransitiveCall(
           funcInfo.body.stmts,
           stepDeclarations,
           context,
-          functionMap
+          functionMap,
+          variableMap
         );
         nodes.push(...bodyResult.nodes);
         edges.push(...bodyResult.edges);
@@ -1395,6 +1636,7 @@ function analyzeTransitiveCall(
           stepDeclarations,
           context,
           functionMap,
+          variableMap,
           visitedFunctions
         );
         nodes.push(...exprResult.nodes);

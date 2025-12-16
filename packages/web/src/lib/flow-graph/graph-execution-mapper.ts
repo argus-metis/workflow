@@ -107,10 +107,14 @@ function buildNodeIndex(nodes: GraphNode[]): {
   byStepId: Map<string, GraphNode[]>;
   byFunctionName: Map<string, GraphNode[]>;
   primitivesByLabel: Map<string, GraphNode[]>;
+  agentNodes: GraphNode[];
+  toolNodes: Map<string, GraphNode[]>;
 } {
   const byStepId = new Map<string, GraphNode[]>();
   const byFunctionName = new Map<string, GraphNode[]>();
   const primitivesByLabel = new Map<string, GraphNode[]>();
+  const agentNodes: GraphNode[] = [];
+  const toolNodes = new Map<string, GraphNode[]>();
 
   for (const node of nodes) {
     if (node.data.stepId) {
@@ -136,8 +140,37 @@ function buildNodeIndex(nodes: GraphNode[]): {
       existing.push(node);
       primitivesByLabel.set(label, existing);
     }
+
+    // Index agent nodes (DurableAgent)
+    if (node.data.nodeKind === 'agent') {
+      agentNodes.push(node);
+    }
+
+    // Index tool nodes by their label (tool name)
+    if (node.data.nodeKind === 'tool') {
+      const label = node.data.label;
+      // Extract base tool name (remove " (tool)" suffix if present)
+      const toolName = label.replace(/ \(tool\)$/, '');
+      const existing = toolNodes.get(toolName) || [];
+      existing.push(node);
+      toolNodes.set(toolName, existing);
+
+      // Also index by function name from stepId for fallback matching
+      if (node.data.stepId) {
+        const functionName = extractFunctionName(
+          normalizeStepName(node.data.stepId)
+        );
+        if (functionName) {
+          const existingByName = toolNodes.get(functionName) || [];
+          if (!existingByName.includes(node)) {
+            existingByName.push(node);
+            toolNodes.set(functionName, existingByName);
+          }
+        }
+      }
+    }
   }
-  return { byStepId, byFunctionName, primitivesByLabel };
+  return { byStepId, byFunctionName, primitivesByLabel, agentNodes, toolNodes };
 }
 
 /**
@@ -592,6 +625,157 @@ function processPrimitiveEvents(
 }
 
 /**
+ * Process agent and tool nodes - mark them as executed based on step executions
+ * DurableAgent is marked as running/completed based on workflow status
+ * Tool nodes are marked as executed when their corresponding step executes
+ * Tools collection placeholders are marked based on agent status (since tools are dynamic)
+ */
+function processAgentAndToolNodes(
+  run: WorkflowRun,
+  steps: Step[],
+  agentNodes: GraphNode[],
+  toolNodes: Map<string, GraphNode[]>,
+  nodeExecutions: Map<string, StepExecution[]>,
+  executionPath: string[],
+  allNodes: GraphNode[]
+): void {
+  // Determine agent status based on workflow status
+  let agentStatus: StepExecution['status'] = 'pending';
+  if (run.status === 'completed') {
+    agentStatus = 'completed';
+  } else if (run.status === 'failed') {
+    agentStatus = 'failed';
+  } else if (run.status === 'running') {
+    agentStatus = 'running';
+  }
+
+  // Mark agent nodes as completed/running based on workflow status
+  for (const agentNode of agentNodes) {
+    const execution: StepExecution = {
+      nodeId: agentNode.id,
+      attemptNumber: 1,
+      status: agentStatus,
+      startedAt: run.startedAt
+        ? new Date(run.startedAt).toISOString()
+        : undefined,
+      completedAt:
+        run.completedAt &&
+        (agentStatus === 'completed' || agentStatus === 'failed')
+          ? new Date(run.completedAt).toISOString()
+          : undefined,
+    };
+
+    nodeExecutions.set(agentNode.id, [execution]);
+
+    if (!executionPath.includes(agentNode.id)) {
+      executionPath.push(agentNode.id);
+    }
+  }
+
+  // Map tool executions FIRST based on matching step names
+  // Extract step function names and match to tool nodes
+  for (const step of steps) {
+    // Extract the function name from stepName (e.g., "step//...//searchFlights" -> "searchFlights")
+    const functionName = extractFunctionName(step.stepName);
+    if (!functionName) continue;
+
+    // Check if this step matches any tool node
+    const matchingToolNodes = toolNodes.get(functionName);
+    if (!matchingToolNodes || matchingToolNodes.length === 0) continue;
+
+    // Use the first matching tool node
+    const toolNode = matchingToolNodes[0];
+
+    // Map step status to execution status
+    let status: StepExecution['status'];
+    switch (step.status) {
+      case 'completed':
+        status = 'completed';
+        break;
+      case 'failed':
+        status = 'failed';
+        break;
+      case 'running':
+        status = 'running';
+        break;
+      case 'cancelled':
+        status = 'cancelled';
+        break;
+      case 'pending':
+      default:
+        status = 'pending';
+        break;
+    }
+
+    const duration =
+      step.completedAt && step.startedAt
+        ? new Date(step.completedAt).getTime() -
+          new Date(step.startedAt).getTime()
+        : undefined;
+
+    const execution: StepExecution = {
+      nodeId: toolNode.id,
+      stepId: step.stepId,
+      attemptNumber: step.attempt,
+      status,
+      startedAt: step.startedAt
+        ? new Date(step.startedAt).toISOString()
+        : undefined,
+      completedAt: step.completedAt
+        ? new Date(step.completedAt).toISOString()
+        : undefined,
+      duration,
+      input: step.input,
+      output: step.output,
+      error: step.error,
+    };
+
+    // Append execution to existing or create new
+    const existing = nodeExecutions.get(toolNode.id) || [];
+    nodeExecutions.set(toolNode.id, [...existing, execution]);
+
+    if (!executionPath.includes(toolNode.id)) {
+      executionPath.push(toolNode.id);
+    }
+  }
+
+  // After processing individual tool executions, mark any "tools collection" placeholder nodes
+  // These are nodes representing unresolved imported tools objects (when we couldn't extract individual tools)
+  // Individual tool nodes should only be marked if they were actually executed above
+  for (const node of allNodes) {
+    // Only mark tools collection placeholders, not individual tool nodes
+    const isToolsCollection =
+      (node.metadata as any)?.isToolsCollection === true;
+    if (
+      node.data.nodeKind === 'tool' &&
+      isToolsCollection &&
+      !nodeExecutions.has(node.id)
+    ) {
+      // This is a tools collection placeholder - mark based on agent status
+      const execution: StepExecution = {
+        nodeId: node.id,
+        attemptNumber: 1,
+        status: agentStatus,
+        startedAt: run.startedAt
+          ? new Date(run.startedAt).toISOString()
+          : undefined,
+        completedAt:
+          run.completedAt &&
+          (agentStatus === 'completed' || agentStatus === 'failed')
+            ? new Date(run.completedAt).toISOString()
+            : undefined,
+      };
+
+      nodeExecutions.set(node.id, [execution]);
+
+      if (!executionPath.includes(node.id)) {
+        executionPath.push(node.id);
+      }
+    }
+  }
+}
+
+/**
  * Maps a workflow run and its steps/events to an execution overlay for the graph
  */
 export function mapRunToExecution(
@@ -636,6 +820,8 @@ export function mapRunToExecution(
     byStepId: nodesByStepId,
     byFunctionName: nodesByFunctionName,
     primitivesByLabel,
+    agentNodes,
+    toolNodes,
   } = buildNodeIndex(graph.nodes);
 
   console.log('[Graph Mapper] Graph nodes by stepId:', {
@@ -710,6 +896,17 @@ export function mapRunToExecution(
   if (primitiveCurrentNode) {
     currentNode = primitiveCurrentNode;
   }
+
+  // Process agent and tool nodes (DurableAgent and its tools)
+  processAgentAndToolNodes(
+    run,
+    sortedSteps,
+    agentNodes,
+    toolNodes,
+    nodeExecutions,
+    executionPath,
+    graph.nodes
+  );
 
   // Add end node based on workflow status
   addEndNodeExecution(run, graph, executionPath, nodeExecutions);

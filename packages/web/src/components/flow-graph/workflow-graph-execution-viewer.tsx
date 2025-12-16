@@ -89,6 +89,16 @@ function getNodeStyle(nodeKind: string, executions?: StepExecution[]) {
       background: 'rgba(168, 85, 247, 0.15)', // purple
       border: '#a855f7',
     };
+  } else if (nodeKind === 'agent') {
+    baseColors = {
+      background: 'rgba(236, 72, 153, 0.15)', // pink
+      border: '#ec4899',
+    };
+  } else if (nodeKind === 'tool') {
+    baseColors = {
+      background: 'rgba(249, 115, 22, 0.15)', // orange
+      border: '#f97316',
+    };
   }
 
   // If no execution data, show faded state
@@ -186,6 +196,20 @@ function getNodeIcon(nodeKind: string, label?: string) {
     return (
       <span className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400 text-xs">
         ⚙
+      </span>
+    );
+  }
+  if (nodeKind === 'agent') {
+    return (
+      <span className="h-3.5 w-3.5 text-pink-600 dark:text-pink-400 text-xs">
+        🤖
+      </span>
+    );
+  }
+  if (nodeKind === 'tool') {
+    return (
+      <span className="h-3.5 w-3.5 text-orange-600 dark:text-orange-400 text-xs">
+        🔧
       </span>
     );
   }
