@@ -53,6 +53,18 @@ function setSessionHealthCheck(
   }
 }
 
+/**
+ * Simple hash function for creating a unique identifier from a string.
+ * Uses a basic djb2 hash algorithm to avoid exposing sensitive data in cache keys.
+ */
+function simpleHash(str: string): string {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) + hash + str.charCodeAt(i);
+  }
+  return (hash >>> 0).toString(36);
+}
+
 function getConfigKey(config: WorldConfig): string {
   // Create a unique key based on all relevant config values that uniquely identify the backend
   // Include backend, port, and backend-specific fields
@@ -66,11 +78,9 @@ function getConfigKey(config: WorldConfig): string {
   if (config.project) keyObj.project = config.project;
   if (config.team) keyObj.team = config.team;
   if (config.dataDir) keyObj.dataDir = config.dataDir;
-  // Only include a hash of the postgres URL to avoid exposing credentials
+  // Hash the postgres URL to avoid exposing credentials in session storage
   if (config.postgresUrl) {
-    // Simple hash to avoid exposing credentials in session storage
-    keyObj.postgresUrlHash =
-      config.postgresUrl.split('@')[1] || config.postgresUrl;
+    keyObj.postgresUrlHash = simpleHash(config.postgresUrl);
   }
 
   return JSON.stringify(keyObj);
@@ -187,7 +197,6 @@ export function EndpointsHealthStatus({ config }: EndpointsHealthStatusProps) {
 
         setHealthCheck(result);
         setSessionHealthCheck(configKey, result);
-        setIsChecking(false);
       } catch (error) {
         // If aborted, don't update state (component unmounted)
         if (abortController.signal.aborted) {
@@ -195,6 +204,11 @@ export function EndpointsHealthStatus({ config }: EndpointsHealthStatusProps) {
         }
         // Otherwise, log unexpected error
         console.error('Unexpected error during health check:', error);
+      } finally {
+        // Always reset loading state unless aborted
+        if (!abortController.signal.aborted) {
+          setIsChecking(false);
+        }
       }
     };
 
