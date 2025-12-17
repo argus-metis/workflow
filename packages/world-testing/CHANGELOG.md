@@ -1,5 +1,29 @@
 # @workflow/world-testing
 
+## 4.0.1-beta.33
+
+### Patch Changes
+
+- Updated dependencies [[`deaf019`](https://github.com/vercel/workflow/commit/deaf0193e91ea7a24d2423a813b64f51faa681e3)]:
+  - @workflow/cli@4.0.1-beta.32
+  - workflow@4.0.1-beta.32
+
+## 4.0.1-beta.32
+
+### Patch Changes
+
+- Updated dependencies []:
+  - workflow@4.0.1-beta.31
+  - @workflow/cli@4.0.1-beta.31
+
+## 4.0.1-beta.31
+
+### Patch Changes
+
+- Updated dependencies []:
+  - workflow@4.0.1-beta.30
+  - @workflow/cli@4.0.1-beta.30
+
 ## 4.0.1-beta.30
 
 ### Patch Changes

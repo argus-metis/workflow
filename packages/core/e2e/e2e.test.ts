@@ -1,5 +1,7 @@
 import { withResolvers } from '@workflow/utils';
-import { assert, afterAll, describe, expect, test } from 'vitest';
+import fs from 'fs';
+import path from 'path';
+import { afterAll, assert, describe, expect, test } from 'vitest';
 import { dehydrateWorkflowArguments } from '../src/serialization';
 import { getProtectionBypassHeaders, isLocalDeployment } from './utils';
 import fs from 'fs';
@@ -810,6 +812,44 @@ describe('e2e', () => {
         childResult: inputValue * 2, // doubleValue(42) = 84
         originalValue: inputValue,
       });
+    }
+  );
+
+  test(
+    'health check endpoint - workflow and step endpoints respond to __health query parameter',
+    { timeout: 30_000 },
+    async () => {
+      // Test the flow endpoint health check
+      const flowHealthUrl = new URL(
+        '/.well-known/workflow/v1/flow?__health',
+        deploymentUrl
+      );
+      const flowRes = await fetch(flowHealthUrl, {
+        method: 'POST',
+        headers: getProtectionBypassHeaders(),
+      });
+      expect(flowRes.status).toBe(200);
+      expect(flowRes.headers.get('Content-Type')).toBe('text/plain');
+      const flowBody = await flowRes.text();
+      expect(flowBody).toBe(
+        'Workflow DevKit "/.well-known/workflow/v1/flow" endpoint is healthy'
+      );
+
+      // Test the step endpoint health check
+      const stepHealthUrl = new URL(
+        '/.well-known/workflow/v1/step?__health',
+        deploymentUrl
+      );
+      const stepRes = await fetch(stepHealthUrl, {
+        method: 'POST',
+        headers: getProtectionBypassHeaders(),
+      });
+      expect(stepRes.status).toBe(200);
+      expect(stepRes.headers.get('Content-Type')).toBe('text/plain');
+      const stepBody = await stepRes.text();
+      expect(stepBody).toBe(
+        'Workflow DevKit "/.well-known/workflow/v1/step" endpoint is healthy'
+      );
     }
   );
 });

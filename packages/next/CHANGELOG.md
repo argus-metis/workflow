@@ -1,5 +1,27 @@
 # @workflow/next
 
+## 4.0.1-beta.31
+
+### Patch Changes
+
+- Updated dependencies [[`deaf019`](https://github.com/vercel/workflow/commit/deaf0193e91ea7a24d2423a813b64f51faa681e3), [`b56aae3`](https://github.com/vercel/workflow/commit/b56aae3fe9b5568d7bdda592ed025b3499149240), [`4d7a393`](https://github.com/vercel/workflow/commit/4d7a393906846be751e798c943594bec3c9b0ff3)]:
+  - @workflow/core@4.0.1-beta.27
+  - @workflow/builders@4.0.1-beta.26
+
+## 4.0.1-beta.30
+
+### Patch Changes
+
+- [#604](https://github.com/vercel/workflow/pull/604) [`6265534`](https://github.com/vercel/workflow/commit/6265534d6be2cba54265ef23b94a0810d9e25c9c) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Bump next.js to address CVE-2025-55184
+
+## 4.0.1-beta.29
+
+### Patch Changes
+
+- Updated dependencies [[`696e7e3`](https://github.com/vercel/workflow/commit/696e7e31e88eae5d86e9d4b9f0344f0777ae9673)]:
+  - @workflow/core@4.0.1-beta.26
+  - @workflow/builders@4.0.1-beta.25
+
 ## 4.0.1-beta.28
 
 ### Patch Changes

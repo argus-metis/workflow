@@ -1,5 +1,6 @@
 'use client';
 
+import { VERCEL_403_ERROR_MESSAGE } from '@workflow/errors';
 import type {
   Event,
   Hook,
@@ -23,6 +24,10 @@ import {
   fetchStreams,
   readStreamServerAction,
   recreateRun as recreateRunServerAction,
+  reenqueueRun as reenqueueRunServerAction,
+  type StopSleepOptions,
+  type StopSleepResult,
+  wakeUpRun as wakeUpRunServerAction,
 } from './workflow-server-actions';
 
 const MAX_ITEMS = 1000;
@@ -51,7 +56,7 @@ export const getErrorMessage = (error: Error | WorkflowWebAPIError): string => {
   if ('layer' in error && error.layer) {
     if (error instanceof WorkflowWebAPIError) {
       if (error.request?.status === 403) {
-        return 'Your current Vercel account does not have access to this data. Please use `vercel login` to log in, or use `vercel switch` to ensure you can access the correct team.';
+        return VERCEL_403_ERROR_MESSAGE;
       }
     }
 
@@ -797,7 +802,10 @@ export function useWorkflowTraceViewerData(
 
     if (result.data.length > 0) {
       setSteps((prev) => mergeSteps(prev, result.data));
-      if (result.cursor) {
+      // We intentionally leave the cursor where it is, unless we're at the end of the page
+      // in which case we roll over. This is so that we re-fetch existing steps, to ensure
+      // their status gets updated.
+      if (result.cursor && result.hasMore) {
         setStepsCursor(result.cursor);
       }
       return true;
@@ -1094,6 +1102,35 @@ export async function cancelRun(env: EnvMap, runId: string): Promise<void> {
 export async function recreateRun(env: EnvMap, runId: string): Promise<string> {
   const { error, result: resultData } = await unwrapServerActionResult(
     recreateRunServerAction(env, runId)
+  );
+  if (error) {
+    throw error;
+  }
+  return resultData;
+}
+
+/**
+ * Wake up a workflow run by re-enqueuing it
+ */
+export async function reenqueueRun(env: EnvMap, runId: string): Promise<void> {
+  const { error } = await unwrapServerActionResult(
+    reenqueueRunServerAction(env, runId)
+  );
+  if (error) {
+    throw error;
+  }
+}
+
+/**
+ * Wake up a workflow run by interrupting any pending sleep() calls
+ */
+export async function wakeUpRun(
+  env: EnvMap,
+  runId: string,
+  options?: StopSleepOptions
+): Promise<StopSleepResult> {
+  const { error, result: resultData } = await unwrapServerActionResult(
+    wakeUpRunServerAction(env, runId, options)
   );
   if (error) {
     throw error;
