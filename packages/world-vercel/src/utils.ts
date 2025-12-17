@@ -111,8 +111,7 @@ export const getHttpUrl = (
   config?: APIConfig
 ): { baseUrl: string; usingProxy: boolean } => {
   const projectConfig = config?.projectConfig;
-  const defaultUrl =
-    'https://workflow-server-git-peter-redis-switchover.vercel.sh/api';
+  const defaultUrl = 'https://vercel-workflow.com/api';
   const defaultProxyUrl = 'https://api.vercel.com/v1/workflow';
   const usingProxy =
     // Skipping proxy is specifically used for e2e testing. Normally, we assume calls from

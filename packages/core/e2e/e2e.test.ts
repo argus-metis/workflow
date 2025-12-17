@@ -3,9 +3,11 @@ import fs from 'fs';
 import path from 'path';
 import { afterAll, assert, describe, expect, test } from 'vitest';
 import { dehydrateWorkflowArguments } from '../src/serialization';
-import { getProtectionBypassHeaders, isLocalDeployment } from './utils';
-import fs from 'fs';
-import path from 'path';
+import {
+  cliInspectJson,
+  getProtectionBypassHeaders,
+  isLocalDeployment,
+} from './utils';
 
 const deploymentUrl = process.env.DEPLOYMENT_URL;
 if (!deploymentUrl) {
@@ -143,6 +145,22 @@ describe('e2e', () => {
     const run = await triggerWorkflow(workflow, [123]);
     const returnValue = await getWorkflowReturnValue(run.runId);
     expect(returnValue).toBe(133);
+
+    const { json } = await cliInspectJson(`runs ${run.runId} --withData`);
+    expect(json).toMatchObject({
+      runId: run.runId,
+      workflowName: expect.any(String),
+      status: 'completed',
+      input: [123],
+      output: 133,
+    });
+    // In local vs. vercel backends, the workflow name is different, so we check for either,
+    // since this test runs against both. Also different workbenches have different directory structures.
+    expect(json.workflowName).toBeOneOf([
+      `workflow//example/${workflow.workflowFile}//${workflow.workflowFn}`,
+      `workflow//${workflow.workflowFile}//${workflow.workflowFn}`,
+      `workflow//src/${workflow.workflowFile}//${workflow.workflowFn}`,
+    ]);
   });
 
   const isNext = process.env.APP_NAME?.includes('nextjs');
@@ -573,6 +591,33 @@ describe('e2e', () => {
 
     // The step should have succeeded on attempt 3
     expect(returnValue).toEqual({ finalAttempt: 3 });
+
+    // Also verify the run data shows the correct output
+    const { json: runData } = await cliInspectJson(
+      `runs ${run.runId} --withData`
+    );
+    expect(runData).toMatchObject({
+      runId: run.runId,
+      status: 'completed',
+      output: { finalAttempt: 3 },
+    });
+
+    // Query steps separately to verify the step data
+    const { json: stepsData } = await cliInspectJson(
+      `steps --runId ${run.runId} --withData`
+    );
+    expect(stepsData).toBeDefined();
+    expect(Array.isArray(stepsData)).toBe(true);
+    expect(stepsData.length).toBeGreaterThan(0);
+
+    // Find the stepThatRetriesAndSucceeds step
+    const retryStep = stepsData.find((s: any) =>
+      s.stepName.includes('stepThatRetriesAndSucceeds')
+    );
+    expect(retryStep).toBeDefined();
+    expect(retryStep.status).toBe('completed');
+    expect(retryStep.attempt).toBe(3);
+    expect(retryStep.output).toEqual([3]);
   });
 
   test('retryableAndFatalErrorWorkflow', { timeout: 60_000 }, async () => {
@@ -664,6 +709,14 @@ describe('e2e', () => {
 
       // Stack trace should NOT contain 'evalmachine' anywhere
       expect(returnValue.cause.stack).not.toContain('evalmachine');
+
+      // Verify the run failed with structured error
+      const { json: runData } = await cliInspectJson(`runs ${run.runId}`);
+      expect(runData.status).toBe('failed');
+      expect(runData.error).toBeTypeOf('object');
+      expect(runData.error.message).toContain(
+        'Error from imported helper module'
+      );
     }
   );
 
@@ -736,6 +789,13 @@ describe('e2e', () => {
         customData,
         hookCleanupTestData: 'workflow_completed',
       });
+
+      // Verify both runs completed successfully
+      const { json: run1Data } = await cliInspectJson(`runs ${run1.runId}`);
+      expect(run1Data.status).toBe('completed');
+
+      const { json: run2Data } = await cliInspectJson(`runs ${run2.runId}`);
+      expect(run2Data.status).toBe('completed');
     }
   );
 
@@ -750,6 +810,24 @@ describe('e2e', () => {
 
       // doubleNumber(10) = 20, then multiply by 2 = 40
       expect(returnValue).toBe(40);
+
+      // Verify the run completed successfully
+      const { json: runData } = await cliInspectJson(
+        `runs ${run.runId} --withData`
+      );
+      expect(runData.status).toBe('completed');
+      expect(runData.output).toBe(40);
+
+      // Verify that exactly 2 steps were executed:
+      // 1. stepWithStepFunctionArg(doubleNumber)
+      //   (doubleNumber(10) is run inside the stepWithStepFunctionArg step)
+      const { json: eventsData } = await cliInspectJson(
+        `events --run ${run.runId} --json`
+      );
+      const stepCompletedEvents = eventsData.filter(
+        (event) => event.eventType === 'step_completed'
+      );
+      expect(stepCompletedEvents).toHaveLength(1);
     }
   );
 
@@ -768,6 +846,13 @@ describe('e2e', () => {
       // - 7 * 3 = 21, prefixed with "Result: " = "Result: 21"
       // - stepThatCallsStepFn wraps it: "Wrapped: Result: 21"
       expect(returnValue).toBe('Wrapped: Result: 21');
+
+      // Verify the run completed successfully
+      const { json: runData } = await cliInspectJson(
+        `runs ${run.runId} --withData`
+      );
+      expect(runData.status).toBe('completed');
+      expect(runData.output).toBe('Wrapped: Result: 21');
     }
   );
 
@@ -810,6 +895,21 @@ describe('e2e', () => {
       expect(returnValue).toHaveProperty('childResult');
       expect(returnValue.childResult).toEqual({
         childResult: inputValue * 2, // doubleValue(42) = 84
+        originalValue: inputValue,
+      });
+
+      // Verify both runs completed successfully via CLI
+      const { json: parentRunData } = await cliInspectJson(
+        `runs ${run.runId} --withData`
+      );
+      expect(parentRunData.status).toBe('completed');
+
+      const { json: childRunData } = await cliInspectJson(
+        `runs ${returnValue.childRunId} --withData`
+      );
+      expect(childRunData.status).toBe('completed');
+      expect(childRunData.output).toEqual({
+        childResult: inputValue * 2,
         originalValue: inputValue,
       });
     }
