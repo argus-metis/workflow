@@ -1,6 +1,39 @@
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { NextConfig } from 'next';
 import semver from 'semver';
 import { getNextBuilder } from './builder.js';
+
+/**
+ * Next.js rewrite rule type
+ */
+interface Rewrite {
+  source: string;
+  destination: string;
+  basePath?: false;
+  locale?: false;
+  has?: Array<{ type: string; key?: string; value?: string }>;
+  missing?: Array<{ type: string; key?: string; value?: string }>;
+}
+
+/**
+ * Check if Pages Router exists in the project.
+ */
+function hasPagesRouter(): boolean {
+  const cwd = process.cwd();
+  return (
+    existsSync(resolve(cwd, 'pages')) || existsSync(resolve(cwd, 'src/pages'))
+  );
+}
+
+/**
+ * The rewrite rule for Pages Router to map workflow protocol routes
+ * from /.well-known/workflow/v1/* to /api/.well-known/workflow/v1/*
+ */
+const PAGES_ROUTER_WORKFLOW_REWRITE: Rewrite = {
+  source: '/.well-known/workflow/v1/:path*',
+  destination: '/api/.well-known/workflow/v1/:path*',
+};
 
 export function withWorkflow(
   nextConfigOrFn:
@@ -133,6 +166,35 @@ export function withWorkflow(
 
       await workflowBuilder.build();
       process.env.WORKFLOW_NEXT_PRIVATE_BUILT = '1';
+    }
+
+    // For Pages Router, add rewrites to map /.well-known/workflow/v1/* to /api/.well-known/workflow/v1/*
+    // This is needed because Pages Router API routes must be in /pages/api/
+    if (hasPagesRouter()) {
+      const existingRewrites = nextConfig.rewrites;
+      nextConfig.rewrites = (async () => {
+        // Get existing rewrites if any
+        let existing: any = [];
+        if (typeof existingRewrites === 'function') {
+          existing = await existingRewrites();
+        } else if (existingRewrites) {
+          existing = existingRewrites;
+        }
+
+        // Handle both array format and object format (beforeFiles/afterFiles/fallback)
+        if (Array.isArray(existing)) {
+          return [...existing, PAGES_ROUTER_WORKFLOW_REWRITE];
+        } else {
+          return {
+            beforeFiles: existing.beforeFiles || [],
+            afterFiles: [
+              ...(existing.afterFiles || []),
+              PAGES_ROUTER_WORKFLOW_REWRITE,
+            ],
+            fallback: existing.fallback || [],
+          };
+        }
+      }) as any;
     }
 
     return nextConfig;
