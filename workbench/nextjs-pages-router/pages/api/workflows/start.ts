@@ -1,10 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { start } from 'workflow/api';
 import { allWorkflows } from '@/_workflows';
-import {
-  WORKFLOW_DEFINITIONS,
-  type WorkflowName,
-} from '@/app/workflows/definitions';
+import { WORKFLOW_DEFINITIONS, type WorkflowName } from '@/definitions';
 
 export default async function handler(
   req: NextApiRequest,

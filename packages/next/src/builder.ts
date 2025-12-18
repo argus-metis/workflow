@@ -659,8 +659,8 @@ async function sendPagesResponse(res, webResponse) {
       // Build webhook route for Pages Router
       await this.buildWebhookRoutePages({ workflowGeneratedDir });
 
-      // Write config.json
-      await this.writeFunctionsConfig(pagesDir);
+      // Write config.json (must be in pages/api/ for Pages Router)
+      await this.writeFunctionsConfig(join(pagesDir, 'api'));
     }
 
     /**
