@@ -33,6 +33,99 @@ export async function getNextBuilder() {
     'import("@workflow/builders")'
   )) as typeof import('@workflow/builders');
 
+  // Inlined pages-adapter code to avoid requiring @workflow/next as a dependency
+  // in Pages Router projects. This code converts between Next.js Pages Router
+  // request/response objects and Web API Request/Response objects.
+  const PAGES_ADAPTER_CODE = `
+async function readRawBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
+async function convertPagesRequest(req) {
+  const protocol = req.headers["x-forwarded-proto"] || "http";
+  const host = req.headers.host || "localhost:3000";
+  const url = new URL(req.url || "/", \`\${protocol}://\${host}\`);
+
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (value) {
+      if (Array.isArray(value)) {
+        for (const v of value) {
+          headers.append(key, v);
+        }
+      } else {
+        headers.set(key, value);
+      }
+    }
+  }
+
+  const init = {
+    method: req.method || "GET",
+    headers,
+  };
+
+  if (!["GET", "HEAD", "OPTIONS"].includes(req.method || "GET")) {
+    // Handle body - check if already parsed by Next.js body parser
+    if (req.body !== undefined && req.body !== null) {
+      if (typeof req.body === "string") {
+        init.body = req.body;
+      } else if (Buffer.isBuffer(req.body)) {
+        init.body = req.body;
+      } else {
+        init.body = JSON.stringify(req.body);
+        if (!headers.has("content-type")) {
+          headers.set("content-type", "application/json");
+        }
+      }
+    } else {
+      // Body parser disabled - read raw body from stream
+      const rawBody = await readRawBody(req);
+      if (rawBody.length > 0) {
+        init.body = rawBody;
+      }
+    }
+  }
+
+  return new Request(url.toString(), init);
+}
+
+async function sendPagesResponse(res, webResponse) {
+  res.statusCode = webResponse.status;
+
+  webResponse.headers.forEach((value, key) => {
+    const lowerKey = key.toLowerCase();
+    if (
+      lowerKey !== "content-encoding" &&
+      lowerKey !== "transfer-encoding" &&
+      lowerKey !== "connection"
+    ) {
+      res.setHeader(key, value);
+    }
+  });
+
+  if (webResponse.body) {
+    const reader = webResponse.body.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        res.write(value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    res.end();
+  } else {
+    res.end();
+  }
+}
+`;
+
   class NextBuilder extends BaseBuilderClass {
     async build() {
       const routers = await this.detectRouters();
@@ -530,14 +623,18 @@ export async function getNextBuilder() {
 
     /**
      * Builds workflow routes for Pages Router.
-     * Generates routes in pages/.well-known/workflow/v1/
+     * Generates routes in pages/api/.well-known/workflow/v1/
+     * For pages router, can use Next.js rewrites to point to .well-known/workflow/v1/
      */
     private async buildForPagesRouter(
       pagesDir: string,
       inputFiles: string[],
       tsConfig: { baseUrl?: string; paths?: Record<string, string[]> }
     ): Promise<void> {
-      const workflowGeneratedDir = join(pagesDir, '.well-known/workflow/v1');
+      const workflowGeneratedDir = join(
+        pagesDir,
+        'api/.well-known/workflow/v1'
+      );
 
       // Ensure output directories exist
       await mkdir(workflowGeneratedDir, { recursive: true });
@@ -603,9 +700,8 @@ export async function getNextBuilder() {
       // The generated bundle exports `POST` which is the stepEntrypoint
       const pagesRouterWrapper = `// biome-ignore-all lint: generated file
 /* eslint-disable */
-import { convertPagesRequest, sendPagesResponse } from '@workflow/next/pages-adapter';
-
-${stepsBundle.replace('export { stepEntrypoint as POST }', 'const POST = stepEntrypoint;')}
+${PAGES_ADAPTER_CODE}
+${stepsBundle.replace(/export\s*\{\s*stepEntrypoint\s+as\s+POST\s*\};?/g, 'const POST = stepEntrypoint;')}
 
 export default async function handler(req, res) {
   const webRequest = await convertPagesRequest(req);
@@ -663,8 +759,7 @@ export const config = {
       // Wrap for Pages Router
       const pagesRouterWrapper = `// biome-ignore-all lint: generated file
 /* eslint-disable */
-import { convertPagesRequest, sendPagesResponse } from '@workflow/next/pages-adapter';
-
+${PAGES_ADAPTER_CODE}
 ${workflowsBundle.replace('export const POST =', 'const POST =')}
 
 export default async function handler(req, res) {
@@ -705,8 +800,7 @@ export const config = {
       const routeContent = `// biome-ignore-all lint: generated file
 /* eslint-disable */
 import { resumeWebhook } from 'workflow/api';
-import { convertPagesRequest, sendPagesResponse } from '@workflow/next/pages-adapter';
-
+${PAGES_ADAPTER_CODE}
 export default async function handler(req, res) {
   const webRequest = await convertPagesRequest(req);
   const { token } = req.query;
