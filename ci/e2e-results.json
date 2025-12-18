@@ -1,6 +1,6 @@
 {
-  "lastUpdated": "2025-12-18T23:24:31.001Z",
-  "commit": "6cd1a47b3146770f5cb9d4c384971331aab6b28a",
+  "lastUpdated": "2025-12-18T23:44:50.338Z",
+  "commit": "eaf9aa65f354bf1e22e8e148c0fd1936f0ec9358",
   "branch": "main",
   "type": "e2e",
   "worlds": {
@@ -43,8 +43,8 @@
     "local": {
       "status": "partial",
       "total": 675,
-      "passed": 658,
-      "failed": 1,
+      "passed": 657,
+      "failed": 2,
       "skipped": 16,
       "frameworks": {
         "astro": {
@@ -59,8 +59,8 @@
         },
         "fastify": {
           "total": 54,
-          "passed": 52,
-          "failed": 0
+          "passed": 51,
+          "failed": 1
         },
         "hono": {
           "total": 54,
