@@ -13,10 +13,11 @@ const DEV_TEST_CONFIGS = {
     apiFileImportPath: '../../..',
   },
   'nextjs-pages-router': {
-    generatedStepPath: 'pages/api/.well-known/workflow/v1/step/route.js',
-    generatedWorkflowPath: 'pages/api/.well-known/workflow/v1/flow/route.js',
+    generatedStepPath: 'pages/api/.well-known/workflow/v1/step.js',
+    generatedWorkflowPath: 'pages/api/.well-known/workflow/v1/flow.js',
     apiFilePath: 'pages/api/chat.ts',
     apiFileImportPath: '../..',
+    // Note: Watch mode is not supported for Pages Router, dev tests may need longer timeouts
   },
   nitro: {
     generatedStepPath: 'node_modules/.nitro/workflow/steps.mjs',
