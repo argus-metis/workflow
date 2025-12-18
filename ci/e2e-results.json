@@ -1,6 +1,6 @@
 {
-  "lastUpdated": "2025-12-17T23:49:55.986Z",
-  "commit": "ab55ba2d61b41e2b2cd9e213069c93be988c9b1e",
+  "lastUpdated": "2025-12-18T02:50:01.426Z",
+  "commit": "ea2a67e19c5d224b4b4fd1c1a417810562df0807",
   "branch": "main",
   "type": "e2e",
   "worlds": {
@@ -14,13 +14,13 @@
       "progress": 97
     },
     "redis": {
-      "status": "partial",
+      "status": "passing",
       "total": 30,
-      "passed": 29,
-      "failed": 1,
+      "passed": 30,
+      "failed": 0,
       "skipped": 0,
       "frameworks": {},
-      "progress": 97
+      "progress": 100
     },
     "starter": {
       "status": "partial",
@@ -43,8 +43,8 @@
     "local": {
       "status": "partial",
       "total": 675,
-      "passed": 656,
-      "failed": 3,
+      "passed": 657,
+      "failed": 2,
       "skipped": 16,
       "frameworks": {
         "astro": {
@@ -54,13 +54,13 @@
         },
         "express": {
           "total": 54,
-          "passed": 50,
-          "failed": 2
+          "passed": 51,
+          "failed": 1
         },
         "fastify": {
           "total": 54,
-          "passed": 51,
-          "failed": 1
+          "passed": 52,
+          "failed": 0
         },
         "hono": {
           "total": 54,
@@ -84,8 +84,8 @@
         },
         "nuxt": {
           "total": 54,
-          "passed": 52,
-          "failed": 0
+          "passed": 51,
+          "failed": 1
         },
         "sveltekit": {
           "total": 54,
