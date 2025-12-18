@@ -10,7 +10,7 @@ export default async function handler(
     return;
   }
 
-  const { token, data } = req.body;
+  const { token, data } = JSON.parse(req.body);
 
   let hook: Awaited<ReturnType<typeof getHookByToken>>;
   try {
