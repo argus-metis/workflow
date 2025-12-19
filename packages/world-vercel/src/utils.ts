@@ -2,7 +2,7 @@ import os from 'node:os';
 import { getVercelOidcToken } from '@vercel/oidc';
 import { WorkflowAPIError } from '@workflow/errors';
 import { type StructuredError, StructuredErrorSchema } from '@workflow/world';
-import { ZodError, type z } from 'zod';
+import type { z } from 'zod';
 import { version } from './version.js';
 
 export interface APIConfig {
@@ -169,12 +169,16 @@ export async function makeRequest<T>({
 }): Promise<T> {
   const { baseUrl, headers } = await getHttpConfig(config);
   headers.set('Content-Type', 'application/json');
+  // NOTE: Add a unique header to bypass RSC request memoization.
+  // See: https://github.com/vercel/workflow/issues/618
+  headers.set('X-Request-Time', Date.now().toString());
 
   const url = `${baseUrl}${endpoint}`;
-  const response = await fetch(url, {
+  const request = new Request(url, {
     ...options,
     headers,
   });
+  const response = await fetch(request);
 
   if (!response.ok) {
     const errorData = (await response.json().catch(() => ({}))) as any;
@@ -183,28 +187,23 @@ export async function makeRequest<T>({
         .map(([key, value]: [string, string]) => `-H "${key}: ${value}"`)
         .join(' ');
       console.error(
-        `Failed to fetch, reproduce with:\ncurl -X ${options.method} ${stringifiedHeaders} "${url}"`
+        `Failed to fetch, reproduce with:\ncurl -X ${request.method} ${stringifiedHeaders} "${url}"`
       );
     }
     throw new WorkflowAPIError(
       errorData.message ||
-        `${options.method ?? 'GET'} ${endpoint} -> HTTP ${response.status}: ${response.statusText}`,
+        `${request.method} ${endpoint} -> HTTP ${response.status}: ${response.statusText}`,
       { url, status: response.status, code: errorData.code }
     );
   }
 
+  const text = await response.text();
+
   try {
-    const text = await response.text();
     return schema.parse(JSON.parse(text));
   } catch (error) {
-    if (error instanceof ZodError) {
-      throw new WorkflowAPIError(
-        `Failed to parse server response for ${options.method ?? 'GET'} ${endpoint}: ${error.message}`,
-        { url, cause: error }
-      );
-    }
     throw new WorkflowAPIError(
-      `Failed to parse server response for ${options.method ?? 'GET'} ${endpoint}`,
+      `Failed to parse server response for ${request.method} ${endpoint}:\n\n${error}\n\nResponse body: ${text}`,
       { url, cause: error }
     );
   }
