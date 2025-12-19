@@ -163,38 +163,55 @@ async function sendPagesResponse(res, webResponse) {
       }
 
       // Build for Pages Router if present
+      let pagesRouterConfig:
+        | {
+            pagesDir: string;
+            workflowGeneratedDir: string;
+          }
+        | undefined;
+
       if (routers.hasPagesRouter && routers.pagesRouterDir) {
+        const workflowGeneratedDir = join(
+          routers.pagesRouterDir,
+          'api/.well-known/workflow/v1'
+        );
         await this.buildForPagesRouter(
           routers.pagesRouterDir,
           inputFiles,
           tsConfig
         );
+        pagesRouterConfig = {
+          pagesDir: routers.pagesRouterDir,
+          workflowGeneratedDir,
+        };
       }
 
-      // Watch mode only supported for App Router currently
-      // (Pages Router generates static files that don't need rebuild context)
-      if (this.config.watch && appRouterBuildResult) {
-        const { stepsBuildContext, workflowsBundle, workflowGeneratedDir } =
-          appRouterBuildResult;
-        if (!stepsBuildContext) {
-          throw new Error(
-            'Invariant: expected steps build context in watch mode'
-          );
-        }
-        if (!workflowsBundle) {
-          throw new Error('Invariant: expected workflows bundle in watch mode');
-        }
-
-        let stepsCtx = stepsBuildContext;
-        let workflowsCtx = workflowsBundle;
+      // Watch mode for App Router and/or Pages Router
+      if (this.config.watch && (appRouterBuildResult || pagesRouterConfig)) {
+        // App Router watch state (may be undefined if only Pages Router)
+        let stepsCtx = appRouterBuildResult?.stepsBuildContext;
+        let workflowsCtx = appRouterBuildResult?.workflowsBundle;
 
         // Options object for rebuild functions
-        const options = {
-          inputFiles,
-          workflowGeneratedDir,
-          tsBaseUrl: tsConfig.baseUrl,
-          tsPaths: tsConfig.paths,
-        };
+        const appRouterOptions = appRouterBuildResult
+          ? {
+              inputFiles,
+              workflowGeneratedDir: appRouterBuildResult.workflowGeneratedDir,
+              tsBaseUrl: tsConfig.baseUrl,
+              tsPaths: tsConfig.paths,
+            }
+          : null;
+
+        // Pages Router rebuild options
+        const pagesRouterOptions = pagesRouterConfig
+          ? {
+              inputFiles,
+              workflowGeneratedDir: pagesRouterConfig.workflowGeneratedDir,
+              tsBaseUrl: tsConfig.baseUrl,
+              tsPaths: tsConfig.paths,
+              pagesDir: pagesRouterConfig.pagesDir,
+            }
+          : null;
 
         const normalizePath = (pathname: string) =>
           pathname.replace(/\\/g, '/');
@@ -230,8 +247,19 @@ async function sendPagesResponse(res, webResponse) {
           '/.parcel-cache/',
           '/.well-known/workflow/',
         ];
-        const normalizedGeneratedDir = workflowGeneratedDir.replace(/\\/g, '/');
-        ignoredPathFragments.push(normalizedGeneratedDir);
+        // Collect all generated directories to ignore
+        const normalizedGeneratedDirs: string[] = [];
+        if (appRouterOptions) {
+          normalizedGeneratedDirs.push(
+            appRouterOptions.workflowGeneratedDir.replace(/\\/g, '/')
+          );
+        }
+        if (pagesRouterOptions) {
+          normalizedGeneratedDirs.push(
+            pagesRouterOptions.workflowGeneratedDir.replace(/\\/g, '/')
+          );
+        }
+        ignoredPathFragments.push(...normalizedGeneratedDirs);
 
         // There is a node.js bug on MacOS which causes closing file watchers to be really slow.
         // This limits the number of watchers to mitigate the issue.
@@ -248,8 +276,11 @@ async function sendPagesResponse(res, webResponse) {
             if (extension && !watchableExtensions.has(extension)) {
               return true;
             }
-            if (normalizedPath.startsWith(normalizedGeneratedDir)) {
-              return true;
+            // Check if path is in any of the generated directories
+            for (const genDir of normalizedGeneratedDirs) {
+              if (normalizedPath.startsWith(genDir)) {
+                return true;
+              }
             }
             for (const fragment of ignoredPathFragments) {
               if (normalizedPath.includes(fragment)) {
@@ -283,25 +314,38 @@ async function sendPagesResponse(res, webResponse) {
 
         const fullRebuild = async () => {
           const newInputFiles = await this.getInputFiles();
-          options.inputFiles = newInputFiles;
 
-          await stepsCtx.dispose();
-          const newStepsCtx = await this.buildStepsFunction(options);
-          if (!newStepsCtx) {
-            throw new Error(
-              'Invariant: expected steps build context after rebuild'
-            );
-          }
-          stepsCtx = newStepsCtx;
+          // Rebuild App Router if present
+          if (appRouterOptions && stepsCtx && workflowsCtx) {
+            appRouterOptions.inputFiles = newInputFiles;
 
-          await workflowsCtx.interimBundleCtx.dispose();
-          const newWorkflowsCtx = await this.buildWorkflowsFunction(options);
-          if (!newWorkflowsCtx) {
-            throw new Error(
-              'Invariant: expected workflows bundle context after rebuild'
-            );
+            await stepsCtx.dispose();
+            const newStepsCtx = await this.buildStepsFunction(appRouterOptions);
+            if (!newStepsCtx) {
+              throw new Error(
+                'Invariant: expected steps build context after rebuild'
+              );
+            }
+            stepsCtx = newStepsCtx;
+
+            await workflowsCtx.interimBundleCtx.dispose();
+            const newWorkflowsCtx =
+              await this.buildWorkflowsFunction(appRouterOptions);
+            if (!newWorkflowsCtx) {
+              throw new Error(
+                'Invariant: expected workflows bundle context after rebuild'
+              );
+            }
+            workflowsCtx = newWorkflowsCtx;
           }
-          workflowsCtx = newWorkflowsCtx;
+
+          // Rebuild Pages Router if present
+          if (pagesRouterOptions) {
+            pagesRouterOptions.inputFiles = newInputFiles;
+            await this.buildStepsFunctionPages(pagesRouterOptions);
+            await this.buildWorkflowsFunctionPages(pagesRouterOptions);
+            console.log('Rebuilt Pages Router bundles');
+          }
         };
 
         const logBuildMessages = (
@@ -330,32 +374,47 @@ async function sendPagesResponse(res, webResponse) {
         };
 
         const rebuildExistingFiles = async () => {
-          const rebuiltStepStart = Date.now();
-          const stepsResult = await stepsCtx.rebuild();
-          logBuildMessages(stepsResult, 'steps bundle');
-          console.log(
-            'Rebuilt steps bundle',
-            `${Date.now() - rebuiltStepStart}ms`
-          );
-
-          const rebuiltWorkflowStart = Date.now();
-          const workflowResult = await workflowsCtx.interimBundleCtx.rebuild();
-          logBuildMessages(workflowResult, 'workflows bundle');
-
-          if (
-            !workflowResult.outputFiles ||
-            workflowResult.outputFiles.length === 0
-          ) {
-            console.error(
-              'No output generated while rebuilding workflows bundle'
+          // Rebuild App Router if present (uses incremental rebuild)
+          if (stepsCtx && workflowsCtx) {
+            const rebuiltStepStart = Date.now();
+            const stepsResult = await stepsCtx.rebuild();
+            logBuildMessages(stepsResult, 'steps bundle');
+            console.log(
+              'Rebuilt steps bundle',
+              `${Date.now() - rebuiltStepStart}ms`
             );
-            return;
+
+            const rebuiltWorkflowStart = Date.now();
+            const workflowResult =
+              await workflowsCtx.interimBundleCtx.rebuild();
+            logBuildMessages(workflowResult, 'workflows bundle');
+
+            if (
+              !workflowResult.outputFiles ||
+              workflowResult.outputFiles.length === 0
+            ) {
+              console.error(
+                'No output generated while rebuilding workflows bundle'
+              );
+              return;
+            }
+            await workflowsCtx.bundleFinal(workflowResult.outputFiles[0].text);
+            console.log(
+              'Rebuilt workflow bundle',
+              `${Date.now() - rebuiltWorkflowStart}ms`
+            );
           }
-          await workflowsCtx.bundleFinal(workflowResult.outputFiles[0].text);
-          console.log(
-            'Rebuilt workflow bundle',
-            `${Date.now() - rebuiltWorkflowStart}ms`
-          );
+
+          // Rebuild Pages Router if present (full rebuild since no incremental support)
+          if (pagesRouterOptions) {
+            const rebuiltPagesStart = Date.now();
+            await this.buildStepsFunctionPages(pagesRouterOptions);
+            await this.buildWorkflowsFunctionPages(pagesRouterOptions);
+            console.log(
+              'Rebuilt Pages Router bundles',
+              `${Date.now() - rebuiltPagesStart}ms`
+            );
+          }
         };
 
         const isWatchableFile = (path: string) =>
