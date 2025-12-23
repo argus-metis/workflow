@@ -258,6 +258,7 @@ function toInspectOptions(flags: any): InspectCLIOptions {
     workflowName: flags.workflowName,
     withData: flags.withData,
     backend: flags.backend,
+    interactive: flags.interactive,
   };
 }
 
