@@ -1,6 +1,6 @@
 {
-  "lastUpdated": "2025-12-23T19:50:03.729Z",
-  "commit": "d9f6a4939760be94dfc9eaf77dcaa48c602c18ef",
+  "lastUpdated": "2025-12-24T17:43:53.848Z",
+  "commit": "26d9769335707985bddbb521d8f8e31bef7fe5ec",
   "branch": "main",
   "type": "e2e",
   "worlds": {
@@ -14,6 +14,15 @@
       "progress": 97
     },
     "redis": {
+      "status": "partial",
+      "total": 30,
+      "passed": 29,
+      "failed": 1,
+      "skipped": 0,
+      "frameworks": {},
+      "progress": 97
+    },
+    "starter": {
       "status": "failing",
       "total": 30,
       "passed": 0,
@@ -21,15 +30,6 @@
       "skipped": 0,
       "frameworks": {},
       "progress": 0
-    },
-    "starter": {
-      "status": "partial",
-      "total": 30,
-      "passed": 22,
-      "failed": 8,
-      "skipped": 0,
-      "frameworks": {},
-      "progress": 73
     },
     "turso": {
       "status": "partial",
@@ -42,8 +42,8 @@
     },
     "local": {
       "status": "partial",
-      "total": 648,
-      "passed": 605,
+      "total": 675,
+      "passed": 632,
       "failed": 27,
       "skipped": 16,
       "frameworks": {
@@ -68,8 +68,8 @@
           "failed": 0
         },
         "nextjs-turbopack": {
-          "total": 108,
-          "passed": 81,
+          "total": 135,
+          "passed": 108,
           "failed": 27
         },
         "nextjs-webpack": {
@@ -98,7 +98,7 @@
           "failed": 0
         }
       },
-      "progress": 93
+      "progress": 94
     },
     "postgres": {
       "status": "passing",
