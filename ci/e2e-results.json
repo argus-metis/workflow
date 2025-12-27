@@ -1,6 +1,6 @@
 {
-  "lastUpdated": "2025-12-27T15:32:43.293Z",
-  "commit": "b97b87b4fe4e6577ce65621de59878bb6bc2befb",
+  "lastUpdated": "2025-12-27T15:59:18.876Z",
+  "commit": "e3f0390469b15f54dee7aa9faf753cb7847a60c6",
   "branch": "main",
   "type": "e2e",
   "worlds": {
@@ -14,22 +14,22 @@
       "progress": 97
     },
     "redis": {
-      "status": "passing",
-      "total": 30,
-      "passed": 30,
-      "failed": 0,
-      "skipped": 0,
-      "frameworks": {},
-      "progress": 100
-    },
-    "starter": {
       "status": "partial",
       "total": 30,
-      "passed": 22,
-      "failed": 8,
+      "passed": 29,
+      "failed": 1,
       "skipped": 0,
       "frameworks": {},
-      "progress": 73
+      "progress": 97
+    },
+    "starter": {
+      "status": "failing",
+      "total": 30,
+      "passed": 0,
+      "failed": 30,
+      "skipped": 0,
+      "frameworks": {},
+      "progress": 0
     },
     "turso": {
       "status": "partial",
@@ -41,10 +41,10 @@
       "progress": 97
     },
     "local": {
-      "status": "partial",
-      "total": 648,
-      "passed": 606,
-      "failed": 26,
+      "status": "passing",
+      "total": 675,
+      "passed": 659,
+      "failed": 0,
       "skipped": 16,
       "frameworks": {
         "astro": {
@@ -54,8 +54,8 @@
         },
         "express": {
           "total": 54,
-          "passed": 26,
-          "failed": 26
+          "passed": 52,
+          "failed": 0
         },
         "fastify": {
           "total": 54,
@@ -68,8 +68,8 @@
           "failed": 0
         },
         "nextjs-turbopack": {
-          "total": 108,
-          "passed": 108,
+          "total": 135,
+          "passed": 135,
           "failed": 0
         },
         "nextjs-webpack": {
@@ -98,7 +98,7 @@
           "failed": 0
         }
       },
-      "progress": 94
+      "progress": 98
     },
     "postgres": {
       "status": "passing",
@@ -161,10 +161,10 @@
       "progress": 98
     },
     "vercel": {
-      "status": "partial",
+      "status": "passing",
       "total": 297,
-      "passed": 285,
-      "failed": 1,
+      "passed": 286,
+      "failed": 0,
       "skipped": 11,
       "frameworks": {
         "astro": {
@@ -174,8 +174,8 @@
         },
         "express": {
           "total": 27,
-          "passed": 25,
-          "failed": 1
+          "passed": 26,
+          "failed": 0
         },
         "fastify": {
           "total": 27,
