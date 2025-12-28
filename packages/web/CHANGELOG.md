@@ -1,5 +1,35 @@
 # @workflow/web
 
+## 4.0.1-beta.21
+
+### Patch Changes
+
+- [#455](https://github.com/vercel/workflow/pull/455) [`e3f0390`](https://github.com/vercel/workflow/commit/e3f0390469b15f54dee7aa9faf753cb7847a60c6) Thanks [@karthikscale3](https://github.com/karthikscale3)! - Added Control Flow Graph extraction from Workflows and extended manifest.json's schema to incorporate the graph structure into it. Refactored manifest generation to pass manifest as a parameter instead of using instance state. Add e2e tests for manifest validation across all builders.
+
+## 4.0.1-beta.20
+
+### Patch Changes
+
+- [#674](https://github.com/vercel/workflow/pull/674) [`4bc98ff`](https://github.com/vercel/workflow/commit/4bc98ff4a15a090e2233c18b75e0a1b5dd2e9ff1) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Move ErrorBoundary component from web to web-shared and use in sidebar detail view.
+
+## 4.0.1-beta.19
+
+### Patch Changes
+
+- [#656](https://github.com/vercel/workflow/pull/656) [`ef22f82`](https://github.com/vercel/workflow/commit/ef22f82c9ead53744bac23fa12ed6bfbb1aba0bb) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Allow resuming hooks with payloads from the UI
+
+## 4.0.1-beta.18
+
+### Patch Changes
+
+- [#646](https://github.com/vercel/workflow/pull/646) [`f396833`](https://github.com/vercel/workflow/commit/f39683370dc187273bd8aa5108e11e49dffe027a) Thanks [@adriandlam](https://github.com/adriandlam)! - Fix missing next.config.ts inside built @workflow/web package
+
+## 4.0.1-beta.17
+
+### Patch Changes
+
+- [#582](https://github.com/vercel/workflow/pull/582) [`05ea678`](https://github.com/vercel/workflow/commit/05ea6789e5773d5b4ee16dce4a800e613261f452) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Add buttons to wake up workflow from sleep or scheduling issues
+
 ## 4.0.1-beta.16
 
 ### Patch Changes

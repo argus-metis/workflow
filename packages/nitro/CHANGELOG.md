@@ -1,5 +1,63 @@
 # @vercel/workflow-nitro
 
+## 4.0.1-beta.35
+
+### Patch Changes
+
+- [#455](https://github.com/vercel/workflow/pull/455) [`e3f0390`](https://github.com/vercel/workflow/commit/e3f0390469b15f54dee7aa9faf753cb7847a60c6) Thanks [@karthikscale3](https://github.com/karthikscale3)! - Added Control Flow Graph extraction from Workflows and extended manifest.json's schema to incorporate the graph structure into it. Refactored manifest generation to pass manifest as a parameter instead of using instance state. Add e2e tests for manifest validation across all builders.
+
+- Updated dependencies [[`e3f0390`](https://github.com/vercel/workflow/commit/e3f0390469b15f54dee7aa9faf753cb7847a60c6)]:
+  - @workflow/builders@4.0.1-beta.31
+  - @workflow/core@4.0.1-beta.32
+  - @workflow/vite@4.0.0-beta.2
+
+## 4.0.1-beta.34
+
+### Patch Changes
+
+- Updated dependencies [[`ea3afce`](https://github.com/vercel/workflow/commit/ea3afce222ff9c2f90d99414fae275ef5f54b431), [`25b02b0`](https://github.com/vercel/workflow/commit/25b02b0bfdefa499e13fb974b1832fbe47dbde86)]:
+  - @workflow/builders@4.0.1-beta.30
+  - @workflow/core@4.0.1-beta.31
+  - @workflow/vite@4.0.0-beta.2
+
+## 4.0.1-beta.33
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @workflow/core@4.0.1-beta.30
+  - @workflow/builders@4.0.1-beta.29
+  - @workflow/vite@4.0.0-beta.2
+
+## 4.0.1-beta.32
+
+### Patch Changes
+
+- Updated dependencies [[`eaf9aa6`](https://github.com/vercel/workflow/commit/eaf9aa65f354bf1e22e8e148c0fd1936f0ec9358)]:
+  - @workflow/core@4.0.1-beta.29
+  - @workflow/builders@4.0.1-beta.28
+  - @workflow/vite@4.0.0-beta.2
+
+## 4.0.1-beta.31
+
+### Patch Changes
+
+- Updated dependencies [[`ea2a67e`](https://github.com/vercel/workflow/commit/ea2a67e19c5d224b4b4fd1c1a417810562df0807), [`712f6f8`](https://github.com/vercel/workflow/commit/712f6f86b1804c82d4cab3bba0db49584451d005)]:
+  - @workflow/core@4.0.1-beta.28
+  - @workflow/builders@4.0.1-beta.27
+  - @workflow/vite@4.0.0-beta.2
+
+## 4.0.1-beta.30
+
+### Patch Changes
+
+- [#619](https://github.com/vercel/workflow/pull/619) [`29967bf`](https://github.com/vercel/workflow/commit/29967bff9098f6c1bce90d2ab7ef40484c3b9242) Thanks [@adriandlam](https://github.com/adriandlam)! - Fix duplicate workflow builds on dev server startup by skipping initial dev:reload hook
+
+- Updated dependencies [[`deaf019`](https://github.com/vercel/workflow/commit/deaf0193e91ea7a24d2423a813b64f51faa681e3), [`b56aae3`](https://github.com/vercel/workflow/commit/b56aae3fe9b5568d7bdda592ed025b3499149240), [`4d7a393`](https://github.com/vercel/workflow/commit/4d7a393906846be751e798c943594bec3c9b0ff3)]:
+  - @workflow/core@4.0.1-beta.27
+  - @workflow/builders@4.0.1-beta.26
+  - @workflow/vite@4.0.0-beta.2
+
 ## 4.0.1-beta.29
 
 ### Patch Changes

@@ -1,5 +1,84 @@
 # @workflow/cli
 
+## 4.0.1-beta.37
+
+### Patch Changes
+
+- Updated dependencies [[`e3f0390`](https://github.com/vercel/workflow/commit/e3f0390469b15f54dee7aa9faf753cb7847a60c6)]:
+  - @workflow/world-local@4.0.1-beta.22
+  - @workflow/builders@4.0.1-beta.31
+  - @workflow/utils@4.0.1-beta.9
+  - @workflow/world@4.0.1-beta.11
+  - @workflow/core@4.0.1-beta.32
+  - @workflow/web@4.0.1-beta.21
+  - @workflow/errors@4.0.1-beta.12
+  - @workflow/world-vercel@4.0.1-beta.24
+
+## 4.0.1-beta.36
+
+### Patch Changes
+
+- [#682](https://github.com/vercel/workflow/pull/682) [`0cf0ac3`](https://github.com/vercel/workflow/commit/0cf0ac32114bcdfa49319d27c2ce98da516690f1) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Extract helper to find local world dataDir across CLI/web projects
+
+- [#669](https://github.com/vercel/workflow/pull/669) [`c059cf6`](https://github.com/vercel/workflow/commit/c059cf6fcd0988b380f66dfa0f2bb85a19cc4063) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Add -i / --interactive flag for enabling pagination bindings, new default being off
+
+- Updated dependencies [[`d9f6a49`](https://github.com/vercel/workflow/commit/d9f6a4939760be94dfc9eaf77dcaa48c602c18ef), [`0cf0ac3`](https://github.com/vercel/workflow/commit/0cf0ac32114bcdfa49319d27c2ce98da516690f1), [`4bc98ff`](https://github.com/vercel/workflow/commit/4bc98ff4a15a090e2233c18b75e0a1b5dd2e9ff1), [`ea3afce`](https://github.com/vercel/workflow/commit/ea3afce222ff9c2f90d99414fae275ef5f54b431), [`25b02b0`](https://github.com/vercel/workflow/commit/25b02b0bfdefa499e13fb974b1832fbe47dbde86), [`c3464bf`](https://github.com/vercel/workflow/commit/c3464bfd978a073f6d8fca95208bd053aa5c78dd)]:
+  - @workflow/world-local@4.0.1-beta.21
+  - @workflow/utils@4.0.1-beta.8
+  - @workflow/web@4.0.1-beta.20
+  - @workflow/builders@4.0.1-beta.30
+  - @workflow/core@4.0.1-beta.31
+  - @workflow/errors@4.0.1-beta.11
+  - @workflow/world-vercel@4.0.1-beta.23
+
+## 4.0.1-beta.35
+
+### Patch Changes
+
+- Updated dependencies [[`ef22f82`](https://github.com/vercel/workflow/commit/ef22f82c9ead53744bac23fa12ed6bfbb1aba0bb), [`f2d5997`](https://github.com/vercel/workflow/commit/f2d5997b800d6c474bb93d4ddd82cf52489752da)]:
+  - @workflow/web@4.0.1-beta.19
+  - @workflow/world-local@4.0.1-beta.20
+  - @workflow/core@4.0.1-beta.30
+  - @workflow/builders@4.0.1-beta.29
+
+## 4.0.1-beta.34
+
+### Patch Changes
+
+- Updated dependencies [[`f396833`](https://github.com/vercel/workflow/commit/f39683370dc187273bd8aa5108e11e49dffe027a), [`eaf9aa6`](https://github.com/vercel/workflow/commit/eaf9aa65f354bf1e22e8e148c0fd1936f0ec9358), [`75a5060`](https://github.com/vercel/workflow/commit/75a506047304f6dd1ac07d9150e8a9563f69283c), [`6cd1a47`](https://github.com/vercel/workflow/commit/6cd1a47b3146770f5cb9d4c384971331aab6b28a)]:
+  - @workflow/web@4.0.1-beta.18
+  - @workflow/core@4.0.1-beta.29
+  - @workflow/world-vercel@4.0.1-beta.22
+  - @workflow/builders@4.0.1-beta.28
+
+## 4.0.1-beta.33
+
+### Patch Changes
+
+- [#638](https://github.com/vercel/workflow/pull/638) [`4bdd3e5`](https://github.com/vercel/workflow/commit/4bdd3e5086a51a46898cca774533019d3ace77b3) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Move auth error messages into @workflow/errors package
+
+- Updated dependencies [[`ea2a67e`](https://github.com/vercel/workflow/commit/ea2a67e19c5d224b4b4fd1c1a417810562df0807), [`ce7d428`](https://github.com/vercel/workflow/commit/ce7d428a07cd415d2ea64c779b84ecdc796927a0), [`712f6f8`](https://github.com/vercel/workflow/commit/712f6f86b1804c82d4cab3bba0db49584451d005), [`ab55ba2`](https://github.com/vercel/workflow/commit/ab55ba2d61b41e2b2cd9e213069c93be988c9b1e), [`712f6f8`](https://github.com/vercel/workflow/commit/712f6f86b1804c82d4cab3bba0db49584451d005), [`4bdd3e5`](https://github.com/vercel/workflow/commit/4bdd3e5086a51a46898cca774533019d3ace77b3)]:
+  - @workflow/core@4.0.1-beta.28
+  - @workflow/world-local@4.0.1-beta.19
+  - @workflow/world-vercel@4.0.1-beta.21
+  - @workflow/errors@4.0.1-beta.10
+  - @workflow/builders@4.0.1-beta.27
+  - @workflow/web@4.0.1-beta.17
+
+## 4.0.1-beta.32
+
+### Patch Changes
+
+- [#627](https://github.com/vercel/workflow/pull/627) [`deaf019`](https://github.com/vercel/workflow/commit/deaf0193e91ea7a24d2423a813b64f51faa681e3) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - [world-vercel] Allow skipping vercel backend proxy for e2e tests where CLI runs in runtime env
+
+- Updated dependencies [[`05ea678`](https://github.com/vercel/workflow/commit/05ea6789e5773d5b4ee16dce4a800e613261f452), [`deaf019`](https://github.com/vercel/workflow/commit/deaf0193e91ea7a24d2423a813b64f51faa681e3), [`b56aae3`](https://github.com/vercel/workflow/commit/b56aae3fe9b5568d7bdda592ed025b3499149240), [`4d7a393`](https://github.com/vercel/workflow/commit/4d7a393906846be751e798c943594bec3c9b0ff3)]:
+  - @workflow/web@4.0.1-beta.17
+  - @workflow/world-vercel@4.0.1-beta.20
+  - @workflow/core@4.0.1-beta.27
+  - @workflow/errors@4.0.1-beta.9
+  - @workflow/world-local@4.0.1-beta.18
+  - @workflow/builders@4.0.1-beta.26
+
 ## 4.0.1-beta.31
 
 ### Patch Changes

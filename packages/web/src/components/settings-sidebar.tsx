@@ -224,8 +224,7 @@ export function SettingsSidebar({
                       </p>
                     </div>
 
-                    {/* TODO(Karthik): Uncomment after https://github.com/vercel/workflow/pull/455 is merged */}
-                    {/* <div className="space-y-2">
+                    <div className="space-y-2">
                       <Label htmlFor="manifestPath">Manifest Path</Label>
                       <Input
                         id="manifestPath"
@@ -249,7 +248,7 @@ export function SettingsSidebar({
                         Path to the workflow manifest file. Leave empty to use
                         default locations.
                       </p>
-                    </div> */}
+                    </div>
                   </>
                 )}
 
@@ -353,7 +352,6 @@ export function SettingsSidebar({
                     </AlertDescription>
                   </Alert>
                 )}
-
                 <div className="flex flex-col gap-2 pt-4">
                   <Button
                     onClick={handleValidateAndApply}

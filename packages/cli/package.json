@@ -1,6 +1,6 @@
 {
   "name": "@workflow/cli",
-  "version": "4.0.1-beta.31",
+  "version": "4.0.1-beta.37",
   "description": "Command-line interface for Workflow DevKit",
   "type": "module",
   "bin": {
@@ -45,6 +45,7 @@
     "@swc/core": "catalog:",
     "@workflow/builders": "workspace:*",
     "@workflow/swc-plugin": "workspace:*",
+    "@workflow/utils": "workspace:*",
     "@workflow/errors": "workspace:*",
     "@workflow/core": "workspace:*",
     "@workflow/web": "workspace:*",
