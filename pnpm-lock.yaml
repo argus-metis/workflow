@@ -30,6 +30,9 @@ catalogs:
     ai:
       specifier: 5.0.104
       version: 5.0.104
+    chalk:
+      specifier: 5.6.2
+      version: 5.6.2
     esbuild:
       specifier: ^0.25.11
       version: 0.25.12
@@ -456,7 +459,7 @@ importers:
         specifier: 5.0.0
         version: 5.0.0
       chalk:
-        specifier: 5.6.2
+        specifier: 'catalog:'
         version: 5.6.2
       chokidar:
         specifier: 4.0.3
@@ -1127,6 +1130,9 @@ importers:
       async-sema:
         specifier: 3.1.1
         version: 3.1.1
+      chalk:
+        specifier: 'catalog:'
+        version: 5.6.2
       ulid:
         specifier: 3.0.1
         version: 3.0.1

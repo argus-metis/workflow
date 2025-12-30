@@ -2,11 +2,13 @@ import { setTimeout } from 'node:timers/promises';
 import { JsonTransport } from '@vercel/queue';
 import { MessageId, type Queue, ValidQueueName } from '@workflow/world';
 import { Sema } from 'async-sema';
+import chalk from 'chalk';
 import { monotonicFactory } from 'ulid';
 import { Agent } from 'undici';
 import z from 'zod';
 import type { Config } from './config.js';
 import { resolveBaseUrl } from './config.js';
+import { frame } from './frame.js';
 import { PACKAGE_VERSION } from './init.js';
 
 // For local queue, there is no technical limit on the message visibility lifespan,
@@ -118,17 +120,23 @@ export function createQueue(config: Partial<Config>): Queue {
             } catch {}
           }
 
-          console.error(`[local world] Failed to queue message`, {
-            queueName,
-            text,
-            status: response.status,
-            headers: Object.fromEntries(response.headers.entries()),
-            body: body.toString(),
-          });
+          console.error(
+            chalk.red(
+              createFailedQueueMessageError({
+                willRetry: defaultRetriesLeft > 0,
+                response,
+                queueName,
+                body,
+                responseText: text,
+              })
+            )
+          );
         }
 
         console.error(
-          `[local world] Reached max retries of local world queue implementation`
+          chalk.red(
+            `[local world] ${chalk.bold('fatal:')} Reached max retries of local world queue implementation`
+          )
         );
       } finally {
         semaphore.release();
@@ -199,7 +207,7 @@ export function createQueue(config: Partial<Config>): Queue {
 
         return Response.json({ ok: true });
       } catch (error) {
-        return Response.json(String(error), { status: 500 });
+        return new Response(String(error), { status: 500 });
       }
     };
   };
@@ -209,4 +217,55 @@ export function createQueue(config: Partial<Config>): Queue {
   };
 
   return { queue, createQueueHandler, getDeploymentId };
+}
+
+export function createFailedQueueMessageError({
+  queueName,
+  response,
+  body,
+  responseText,
+  willRetry,
+}: {
+  queueName: string;
+  willRetry: boolean;
+  response: Response;
+  body: Buffer;
+  responseText: string;
+}) {
+  return frame({
+    text: `${chalk.dim('[local world]')} ${chalk.bold('error:')} failed to execute`,
+    contents: [
+      responseText || 'No reason provided.',
+      willRetry
+        ? chalk.blue(`${chalk.bold('note:')} it will be retried soon.`)
+        : [
+            chalk.italic('This message failed and will not be retried.'),
+            chalk.cyan(
+              `${chalk.bold('help:')} run ${code(`npx workflow inspect wrun_...`)} to inspect the workflow run and retry manually.`
+            ),
+          ].join('\n'),
+      ...(process.env.WORKFLOW_LOCAL_WORLD_DEBUG_REQUEST_ERRORS !== '1'
+        ? []
+        : [
+            chalk.reset(
+              [
+                `queue name: ${queueName}`,
+                `response status: ${response.status}`,
+                frame({
+                  text: 'headers:',
+                  contents: Array.from(
+                    response.headers,
+                    ([key, value]) => `${key}=${value}`
+                  ),
+                }),
+                frame({ text: 'request body', contents: [body.toString()] }),
+              ].join('\n')
+            ),
+          ]),
+    ],
+  });
+}
+
+function code(str: string) {
+  return chalk.italic(`${chalk.dim('`')}${str}${chalk.dim('`')}`);
 }
