@@ -1,5 +1,6 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
+import * as esbuild from 'esbuild';
 import { BaseBuilder } from './base-builder.js';
 import { STEP_QUEUE_TRIGGER, WORKFLOW_QUEUE_TRIGGER } from './constants.js';
 
@@ -48,12 +49,45 @@ export class VercelBuildOutputAPIBuilder extends BaseBuilder {
     const stepsFuncDir = join(workflowGeneratedDir, 'step.func');
     await mkdir(stepsFuncDir, { recursive: true });
 
-    // Create steps bundle
+    // Two-pass build approach (similar to how framework builders work):
+    // 1. First pass: Create intermediate bundle with externalizeNonSteps: true
+    //    This externalizes the 'workflow' package so we don't need it resolved
+    //    from files outside the project directory (e.g. via path aliases)
+    // 2. Second pass: Bundle the intermediate output with a normal esbuild pass
+    //    This bundles everything including the 'workflow' package
+
+    const interimDir = join(workflowGeneratedDir, '.interim-steps');
+    await mkdir(interimDir, { recursive: true });
+    const interimOutfile = join(interimDir, 'index.js');
+    const finalOutfile = join(stepsFuncDir, 'index.js');
+
+    // First pass: externalize non-step code (including 'workflow' package)
     const { manifest } = await this.createStepsBundle({
       inputFiles,
-      outfile: join(stepsFuncDir, 'index.js'),
+      outfile: interimOutfile,
       tsconfigPath,
+      externalizeNonSteps: true,
     });
+
+    // Second pass: bundle the intermediate output with all dependencies
+    await esbuild.build({
+      entryPoints: [interimOutfile],
+      outfile: finalOutfile,
+      absWorkingDir: dirname(interimOutfile),
+      bundle: true,
+      format: 'cjs',
+      platform: 'node',
+      conditions: ['node'],
+      target: 'es2022',
+      treeShaking: true,
+      keepNames: true,
+      minify: false,
+      logLevel: 'error',
+      external: ['bun', 'bun:*', ...(this.config.externalPackages || [])],
+    });
+
+    // Clean up intermediate files
+    await rm(interimDir, { recursive: true, force: true });
 
     // Create package.json and .vc-config.json for steps function
     await this.createPackageJson(stepsFuncDir, 'commonjs');
