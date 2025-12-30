@@ -76,6 +76,25 @@ export function createSwcPlugin(options: SwcPluginOptions): Plugin {
         }
       };
 
+      // Resolve 'workflow/*' imports from the workbench directory (absWorkingDir).
+      // This is needed because SWC transforms step functions to add imports like
+      // `import { registerStepFunction } from "workflow/internal/private"`.
+      // When a step file is located outside the workbench (e.g. via path alias),
+      // esbuild's default resolution would fail because it resolves from the file's
+      // directory where 'workflow' is not installed.
+      build.onResolve({ filter: /^workflow\// }, async (args) => {
+        try {
+          const resolvedPath = await enhancedResolve(
+            build.initialOptions.absWorkingDir || process.cwd(),
+            args.path
+          );
+          if (resolvedPath) {
+            return { path: resolvedPath };
+          }
+        } catch (_) {}
+        return null;
+      });
+
       build.onResolve({ filter: /.*/ }, async (args) => {
         if (!options.entriesToBundle) {
           return null;

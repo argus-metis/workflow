@@ -975,20 +975,20 @@ describe('e2e', () => {
     'pathsAliasWorkflow - TypeScript path aliases resolve correctly',
     { timeout: 60_000 },
     async () => {
-      // This workflow uses a step that calls a helper function imported via @repo/* path alias
+      // This workflow calls a step function imported via @repo/* path alias
       // which resolves to a file outside the workbench directory (../../lib/steps/paths-alias-test.ts)
       const run = await triggerWorkflow('pathsAliasWorkflow', []);
       const returnValue = await getWorkflowReturnValue(run.runId);
 
-      // The step should return the helper's identifier string
-      expect(returnValue).toBe('pathsAliasHelper');
+      // The step should return its identifier string
+      expect(returnValue).toBe('pathsAliasStep');
 
       // Verify the run completed successfully
       const { json: runData } = await cliInspectJson(
         `runs ${run.runId} --withData`
       );
       expect(runData.status).toBe('completed');
-      expect(runData.output).toBe('pathsAliasHelper');
+      expect(runData.output).toBe('pathsAliasStep');
     }
   );
 });
