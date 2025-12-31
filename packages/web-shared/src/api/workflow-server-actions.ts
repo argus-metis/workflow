@@ -528,8 +528,12 @@ export async function reenqueueRun(
 
     await world.queue(
       `__wkf_workflow_${run.workflowName}`,
-      { runId },
-      { deploymentId, inspectionEntity: { type: 'run', id: runId } }
+      {
+        runId,
+      },
+      {
+        deploymentId,
+      }
     );
 
     return createResponse(undefined);
@@ -615,8 +619,12 @@ export async function wakeUpRun(
     if (pendingWaits.length > 0) {
       await world.queue(
         `__wkf_workflow_${run.workflowName}`,
-        { runId },
-        { deploymentId, inspectionEntity: { type: 'run', id: runId } }
+        {
+          runId,
+        },
+        {
+          deploymentId,
+        }
       );
     }
 

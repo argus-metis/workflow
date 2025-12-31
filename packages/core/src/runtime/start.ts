@@ -132,10 +132,6 @@ export async function start<TArgs extends unknown[], TResult>(
         } satisfies WorkflowInvokePayload,
         {
           deploymentId,
-          inspectionEntity: {
-            type: 'run',
-            id: runResponse.runId,
-          },
         }
       );
 

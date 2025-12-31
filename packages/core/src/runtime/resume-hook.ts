@@ -121,13 +121,7 @@ export async function resumeHook<T = any>(
             traceCarrier:
               workflowRun.executionContext?.traceCarrier ?? undefined,
           } satisfies WorkflowInvokePayload,
-          {
-            deploymentId: workflowRun.deploymentId,
-            inspectionEntity: {
-              type: 'run',
-              id: hook.runId,
-            },
-          }
+          { deploymentId: workflowRun.deploymentId }
         );
 
         return hook;

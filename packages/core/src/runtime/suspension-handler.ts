@@ -138,10 +138,6 @@ async function processStep({
       },
       {
         idempotencyKey: queueItem.correlationId,
-        inspectionEntity: {
-          type: 'step',
-          id: step.stepId,
-        },
       }
     );
   } catch (err) {
