@@ -1,6 +1,7 @@
 import { WorkflowRuntimeError } from '@workflow/errors';
 import { DevalueError, parse, stringify, unflatten } from 'devalue';
 import { monotonicFactory } from 'ulid';
+import { NotInStepContextError } from './not-in-workflow-context-error.js';
 import { getStepFunction, StepNotFoundError } from './private.js';
 import { getWorld } from './runtime/world.js';
 import { contextStorage } from './step/context-storage.js';
@@ -777,8 +778,9 @@ export function getWorkflowRevivers(
         (value as any)[WEBHOOK_RESPONSE_WRITABLE] = responseWritable;
         delete value.responseWritable;
         (value as any).respondWith = () => {
-          throw new Error(
-            '`respondWith()` must be called from within a step function'
+          throw new NotInStepContextError(
+            'respondWith()',
+            'dynamic webhook responses: https://useworkflow.dev/docs/foundations/hooks#dynamic-responses-manual-mode'
           );
         };
       }
