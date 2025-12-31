@@ -352,7 +352,7 @@ export async function runWorkflow(
       }
 
       clone(): Request {
-        ENOTSUP();
+        ENOTSUP('Request.clone');
       }
 
       get bodyUsed() {
@@ -469,7 +469,7 @@ export async function runWorkflow(
       }
 
       static error(): Response {
-        ENOTSUP();
+        ENOTSUP(`Response.error`);
       }
 
       static redirect(url: string | URL, status: number = 302): Response {
@@ -500,7 +500,7 @@ export async function runWorkflow(
 
     class ReadableStream<T> implements globalThis.ReadableStream<T> {
       constructor() {
-        ENOTSUP();
+        ENOTSUP(`new ReadableStream`);
       }
 
       get locked() {
@@ -508,42 +508,42 @@ export async function runWorkflow(
       }
 
       cancel(): any {
-        ENOTSUP();
+        ENOTSUP(`ReadableStream.cancel`);
       }
 
       getReader(): any {
-        ENOTSUP();
+        ENOTSUP(`ReadableStream.getReader`);
       }
 
       pipeThrough(): any {
-        ENOTSUP();
+        ENOTSUP(`ReadableStream.pipeThrough`);
       }
 
       pipeTo(): any {
-        ENOTSUP();
+        ENOTSUP(`ReadableStream.pipeTo`);
       }
 
       tee(): any {
-        ENOTSUP();
+        ENOTSUP(`ReadableStream.tee`);
       }
 
       values(): any {
-        ENOTSUP();
+        ENOTSUP(`ReadableStream.values`);
       }
 
       static from(): any {
-        ENOTSUP();
+        ENOTSUP(`ReadableStream.from`);
       }
 
       [Symbol.asyncIterator](): any {
-        ENOTSUP();
+        ENOTSUP(`ReadableStream[Symbol.asyncIterator]`);
       }
     }
     vmGlobalThis.ReadableStream = ReadableStream;
 
     class WritableStream<T> implements globalThis.WritableStream<T> {
       constructor() {
-        ENOTSUP();
+        ENOTSUP(`new WritableStream`);
       }
 
       get locked() {
@@ -551,15 +551,15 @@ export async function runWorkflow(
       }
 
       abort(): any {
-        ENOTSUP();
+        ENOTSUP(`WritableStream.abort`);
       }
 
       close(): any {
-        ENOTSUP();
+        ENOTSUP(`WritableStream.close`);
       }
 
       getWriter(): any {
-        ENOTSUP();
+        ENOTSUP(`WritableStream.getWriter`);
       }
     }
     vmGlobalThis.WritableStream = WritableStream;
@@ -569,7 +569,7 @@ export async function runWorkflow(
       writable: globalThis.WritableStream<I>;
 
       constructor() {
-        ENOTSUP();
+        ENOTSUP(`new TransformStream`);
       }
     }
     vmGlobalThis.TransformStream = TransformStream;

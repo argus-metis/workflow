@@ -10,7 +10,7 @@ export class NotInWorkflowContextError extends Error {
   ) {
     super(
       Logger.frame(
-        `\`${functionName}\` can only be called inside a workflow function`,
+        `${Logger.code(functionName)} can only be called inside a workflow function`,
         [Logger.note(`Read more about ${docLink}`)]
       )
     );
@@ -25,7 +25,7 @@ export class NotInStepContextError extends Error {
   ) {
     super(
       Logger.frame(
-        `\`${functionName}\` can only be called inside a step function`,
+        `${Logger.code(functionName)} can only be called inside a step function`,
         [Logger.note(`Read more about ${docLink}`)]
       )
     );
@@ -40,7 +40,7 @@ export class UnavailableInWorkflowContextError extends Error {
   ) {
     const { workflowName } = getWorkflowMetadata();
     const message = Logger.frame(
-      `\`${functionName}\` cannot be called from a workflow context.`,
+      `${Logger.code(functionName)} cannot be called from a workflow context.`,
       [
         'calling this in a workflow context can cause determinism issues.',
         Logger.note([
