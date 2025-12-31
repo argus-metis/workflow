@@ -5,6 +5,7 @@ import type {
   Webhook,
   WebhookOptions,
 } from '../create-hook.js';
+import { createHook as throwHookError } from '../create-hook.js';
 import { WORKFLOW_CREATE_HOOK } from '../symbols.js';
 import { getWorkflowMetadata } from './get-workflow-metadata.js';
 
@@ -14,9 +15,7 @@ export function createHook<T = any>(options?: HookOptions): Hook<T> {
     WORKFLOW_CREATE_HOOK
   ] as typeof createHook<T>;
   if (!createHookFn) {
-    throw new Error(
-      '`createHook()` can only be called inside a workflow function'
-    );
+    return throwHookError<T>(options);
   }
   return createHookFn(options);
 }

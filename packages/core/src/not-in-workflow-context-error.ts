@@ -42,6 +42,7 @@ export class UnavailableInWorkflowContextError extends Error {
     const message = Logger.frame(
       `\`${functionName}\` cannot be called from a workflow context.`,
       [
+        'calling this in a workflow context can cause determinism issues.',
         Logger.note([
           `this call was made from the ${ansifyStep(workflowName)} workflow context.`,
           `Read more about ${docLink}`,

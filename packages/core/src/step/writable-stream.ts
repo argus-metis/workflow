@@ -5,6 +5,7 @@ import {
 } from '../serialization.js';
 import { getWorkflowRunStreamId } from '../util.js';
 import type { WorkflowWritableStreamOptions } from '../writable-stream.js';
+import { getWritable as throwError } from '../writable-stream.js';
 import { contextStorage } from './context-storage.js';
 
 export type { WorkflowWritableStreamOptions };
@@ -24,9 +25,7 @@ export function getWritable<W = any>(
 ): WritableStream<W> {
   const ctx = contextStorage.getStore();
   if (!ctx) {
-    throw new Error(
-      '`getWritable()` can only be called inside a workflow or step function'
-    );
+    return throwError();
   }
 
   const { namespace } = options;

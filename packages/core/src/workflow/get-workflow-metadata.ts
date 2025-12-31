@@ -1,3 +1,5 @@
+import * as Logger from '../prettylogger.js';
+
 export interface WorkflowMetadata {
   /**
    * Unique identifier for the workflow run.
@@ -28,7 +30,16 @@ export function getWorkflowMetadata(): WorkflowMetadata {
   const ctx = (globalThis as any)[WORKFLOW_CONTEXT_SYMBOL] as WorkflowMetadata;
   if (!ctx) {
     throw new Error(
-      '`getWorkflowMetadata()` can only be called inside a workflow or step function'
+      Logger.frame(
+        '`getWorkflowMetadata()` can only be called inside a workflow or step function',
+        [
+          Logger.help([
+            'This function comes from Workflow DevKit, and requires to be used as a part of a workflow or a step,',
+            'As it has no meaning outside of the workflow context.',
+            'Read more: https://useworkflow.dev/docs/api-reference/workflow/get-workflow-metadata',
+          ]),
+        ]
+      )
     );
   }
   return ctx;
