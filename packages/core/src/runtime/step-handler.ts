@@ -236,6 +236,7 @@ const stepHandler = getWorldHandlers().createQueueHandler(
                   attempt,
                 },
                 workflowMetadata: {
+                  workflowName,
                   workflowRunId,
                   workflowStartedAt: new Date(+workflowStartedAt),
                   // TODO: there should be a getUrl method on the world interface itself. This

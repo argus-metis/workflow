@@ -13,6 +13,11 @@ export interface WorkflowMetadata {
    * The URL where the workflow can be triggered.
    */
   url: string;
+
+  /*
+   * The name of the workflow.
+   */
+  workflowName: string;
 }
 
 export const WORKFLOW_CONTEXT_SYMBOL =

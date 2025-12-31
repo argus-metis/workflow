@@ -1,3 +1,4 @@
+import { NotInStepContextError } from '../not-in-workflow-context-error.js';
 import { contextStorage } from './context-storage.js';
 
 /**
@@ -10,8 +11,9 @@ import { contextStorage } from './context-storage.js';
 export function __private_getClosureVars(): Record<string, any> {
   const ctx = contextStorage.getStore();
   if (!ctx) {
-    throw new Error(
-      'Closure variables can only be accessed inside a step function'
+    throw new NotInStepContextError(
+      '[Closure variables]',
+      'Step functions: https://useworkflow.dev/docs/foundations/workflows-and-steps#step-functions'
     );
   }
   return ctx.closureVars || {};

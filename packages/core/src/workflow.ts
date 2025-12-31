@@ -113,6 +113,7 @@ export async function runWorkflow(
     // For the workflow VM, we store the context in a symbol on the `globalThis` object
     const ctx: WorkflowMetadata = {
       workflowRunId: workflowRun.runId,
+      workflowName: workflowRun.workflowName,
       workflowStartedAt: new vmGlobalThis.Date(+startedAt),
       url,
     };
