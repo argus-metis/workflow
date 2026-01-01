@@ -1,6 +1,11 @@
 import { setTimeout } from 'node:timers/promises';
 import { JsonTransport } from '@vercel/queue';
-import { MessageId, type Queue, ValidQueueName } from '@workflow/world';
+import {
+  MessageId,
+  type Queue,
+  QueuePrefix,
+  ValidQueueName,
+} from '@workflow/world';
 import { Sema } from 'async-sema';
 import chalk from 'chalk';
 import { monotonicFactory } from 'ulid';
@@ -64,7 +69,9 @@ export function createQueue(config: Partial<Config>): Queue {
     } else if (queueName.startsWith('__wkf_workflow_')) {
       pathname = `flow`;
     } else {
-      throw new Error('Unknown queue name prefix');
+      throw new Error(
+        `Unknown queue name prefix. Valid prefixes are ${QueuePrefix.options.map((x) => x.value).join(', ')}`
+      );
     }
     const messageId = MessageId.parse(`msg_${generateId()}`);
 
@@ -157,36 +164,75 @@ export function createQueue(config: Partial<Config>): Queue {
     return { messageId };
   };
 
-  const HeaderParser = z.object({
-    'x-vqs-queue-name': ValidQueueName,
-    'x-vqs-message-id': MessageId,
-    'x-vqs-message-attempt': z.coerce.number(),
-  });
+  const HeaderParser = z
+    .object({
+      'x-vqs-queue-name': ValidQueueName,
+      'x-vqs-message-id': MessageId,
+      'x-vqs-message-attempt': z.coerce.number(),
+    })
+    .transform((data) => ({
+      queueName: data['x-vqs-queue-name'],
+      messageId: data['x-vqs-message-id'],
+      attempt: data['x-vqs-message-attempt'],
+    }));
+
+  async function parseRequest(
+    req: Request
+  ): Promise<
+    | [
+        headers: z.infer<typeof HeaderParser>,
+        bodyStream: ReadableStream<Uint8Array>,
+        null,
+      ]
+    | [null, null, Response]
+  > {
+    const headers = HeaderParser.safeParse(Object.fromEntries(req.headers));
+
+    if (!headers.success) {
+      return [
+        null,
+        null,
+        Response.json(
+          {
+            error: 'Invalid or missing headers',
+            details: z.treeifyError(headers.error),
+          },
+          { status: 400 }
+        ),
+      ] as const;
+    }
+
+    if (!req.body) {
+      return [
+        null,
+        null,
+        Response.json({ error: 'Missing request body' }, { status: 400 }),
+      ] as const;
+    }
+
+    return [headers.data, req.body, null] as const;
+  }
 
   const createQueueHandler: Queue['createQueueHandler'] = (prefix, handler) => {
     return async (req) => {
-      const headers = HeaderParser.safeParse(Object.fromEntries(req.headers));
+      const [headers, bodyStream, parseError] = await parseRequest(req);
+      if (parseError) return parseError;
+      const { queueName, messageId, attempt } = headers;
 
-      if (!headers.success || !req.body) {
+      if (!queueName.startsWith(prefix)) {
         return Response.json(
           {
-            error: !req.body
-              ? 'Missing request body'
-              : 'Missing required headers',
+            error: 'Mismatched queue prefix',
+            details: {
+              requestedQueue: queueName,
+              configuredPrefix: prefix,
+            },
           },
           { status: 400 }
         );
       }
 
-      const queueName = headers.data['x-vqs-queue-name'];
-      const messageId = headers.data['x-vqs-message-id'];
-      const attempt = headers.data['x-vqs-message-attempt'];
-
-      if (!queueName.startsWith(prefix)) {
-        return Response.json({ error: 'Unhandled queue' }, { status: 400 });
-      }
-
-      const body = await new JsonTransport().deserialize(req.body);
+      const body = await new JsonTransport().deserialize(bodyStream);
       try {
         const result = await handler(body, { attempt, queueName, messageId });
 

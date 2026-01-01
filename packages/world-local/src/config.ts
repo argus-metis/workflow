@@ -1,4 +1,6 @@
 import { getWorkflowPort } from '@workflow/utils/get-port';
+import { frame } from './frame.js';
+import * as Logger from './logger.js';
 import { once } from './util.js';
 
 const getDataDirFromEnv = () => {
@@ -49,5 +51,20 @@ export async function resolveBaseUrl(config: Partial<Config>): Promise<string> {
     return `http://localhost:${detectedPort}`;
   }
 
-  throw new Error('Unable to resolve base URL for workflow queue.');
+  throw new Error(
+    frame({
+      text: `Unable to resolve base URL for workflow queue`,
+      contents: [
+        'The local world works by making HTTP calls to the .well-known/workflow endpoints[1].\n' +
+          'Therefore, it needs to have a base URL to connect to the local server.',
+        Logger.note('we tried inferring the running port but failed.'),
+        Logger.help([
+          `fix by setting one of the following environment variables:`,
+          `• ${Logger.code('PORT')} to use ${Logger.code('http://localhost:PORT')}`,
+          `• ${Logger.code('WORKFLOW_LOCAL_BASE_URL')} as a full URL`,
+        ]),
+        'Read more about .well-known endpoints: https://useworkflow.dev/docs/how-it-works/framework-integrations#understanding-the-endpoints',
+      ],
+    })
+  );
 }

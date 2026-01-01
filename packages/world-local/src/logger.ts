@@ -24,6 +24,11 @@ export function hint(messages: string | string[]) {
   return styles.info(`${chalk.bold('hint:')} ${message}`);
 }
 
+export function note(messages: string | string[]) {
+  const message = Array.isArray(messages) ? messages.join('\n') : messages;
+  return styles.info(`${chalk.bold('note:')} ${message}`);
+}
+
 export function code(str: string) {
   return chalk.italic(`${chalk.dim('`')}${str}${chalk.dim('`')}`);
 }
