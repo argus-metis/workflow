@@ -84,7 +84,7 @@ function name(arg) {
 
   test('three explanations', () => {
     const value = inline`
-${{ text: 'fun', explain: 'nothing fun about it' }}ction ${{ text: 'name', explain: 'name not allowed bro' }}(${{ text: 'arg', explain: 'unused' }}) {
+${['fun', 'nothing fun about it']}ction ${{ text: 'name', explain: 'name not allowed bro' }}(${{ text: 'arg', explain: 'unused' }}) {
   return 666
 }`;
     expect(value).toEqual(

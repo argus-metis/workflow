@@ -1,4 +1,4 @@
-import chalk from 'chalk';
+import { Ansi } from '@workflow/errors';
 import { logger } from '../config/log.js';
 
 interface VercelTeam {
@@ -31,18 +31,16 @@ export async function fetchTeamInfo(
 
     if (response.status === 401 || response.status === 403) {
       logger.error(
-        chalk.red(
-          `Authentication failed (${response.status}): Unable to access team information`
+        Ansi.frame(
+          `Authentication failed (${response.status}): unable to access team information`,
+          [
+            Ansi.hint([
+              'ensure you are logged in and have access to the team:',
+              `1. Sign into your Vercel account with ${Ansi.code('npx vercel login')}`,
+              `2. Sync environment variables with ${Ansi.code('npx vercel env pull')}`,
+            ]),
+          ]
         )
-      );
-      logger.warn(
-        chalk.yellow(
-          '\nPlease ensure you are logged in and have access to the team:'
-        )
-      );
-      logger.warn(chalk.yellow('  1. Run `vercel login` to authenticate'));
-      logger.warn(
-        chalk.yellow('  2. Run `vercel env pull` to sync environment variables')
       );
       return null;
     }
