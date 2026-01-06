@@ -298,6 +298,7 @@ const attributeOrder: AttributeKey[] = [
   'correlationId',
   'eventType',
   'deploymentId',
+  'specVersion',
   'ownerId',
   'projectId',
   'environment',
@@ -373,6 +374,7 @@ const attributeToDisplayFn: Record<
   correlationId: (value: unknown) => String(value),
   // Project details
   deploymentId: (value: unknown) => String(value),
+  specVersion: (value: unknown) => String(value),
   // Tenancy (we don't show these)
   ownerId: (_value: unknown) => null,
   projectId: (_value: unknown) => null,
