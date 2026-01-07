@@ -120,8 +120,12 @@ export const getHttpUrl = (
   const projectConfig = config?.projectConfig;
   const defaultUrl = 'https://vercel-workflow.com/api';
   const defaultProxyUrl = 'https://api.vercel.com/v1/workflow';
+  const baseUrl = config?.baseUrl || defaultUrl;
+
   // Use proxy when both projectId and teamId are provided
-  const usingProxy = Boolean(projectConfig?.projectId && projectConfig?.teamId);
+  const usingProxy =
+    Boolean(projectConfig?.projectId && projectConfig?.teamId) ||
+    baseUrl.includes('api.vercel.com/v1/workflow');
 
   if (usingProxy) {
     // When using proxy, always use the hardcoded proxy URL.
@@ -136,7 +140,7 @@ export const getHttpUrl = (
 
   // When not using proxy, use baseUrl directly or fall back to default
   return {
-    baseUrl: config?.baseUrl || defaultUrl,
+    baseUrl,
     usingProxy: false,
   };
 };
