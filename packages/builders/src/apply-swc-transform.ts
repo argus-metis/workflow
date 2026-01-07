@@ -69,10 +69,7 @@ export async function applySwcTransform(
         },
       },
     },
-    // TODO: investigate proper source map support as they
-    // won't even be used in Node.js by default unless we
-    // intercept errors and apply them ourselves
-    sourceMaps: false,
+    sourceMaps: 'inline',
     minify: false,
   });
 

@@ -30,7 +30,7 @@ export function hasStepSourceMaps(): boolean {
   // TODO: we need to fix this
   const appName = process.env.APP_NAME as string;
   if (['nextjs-webpack', 'nextjs-turbopack'].includes(appName)) {
-    return false;
+    return true;
   }
 
   // Vercel builds have proper source maps for all other frameworks, EXCEPT sveltekit
