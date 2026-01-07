@@ -69,7 +69,9 @@ export async function applySwcTransform(
         },
       },
     },
-    sourceMaps: 'inline',
+    // node_modules have invalid source maps often so ignore there
+    // but enable for first party code
+    sourceMaps: filename.includes('node_modules') ? false : 'inline',
     minify: false,
   });
 
