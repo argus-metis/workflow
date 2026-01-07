@@ -9,7 +9,12 @@ export interface APIConfig {
   baseUrl?: string;
   token?: string;
   headers?: RequestInit['headers'];
-  skipProxy?: boolean;
+  /**
+   * URL of the workflow server to use. When provided and using the proxy,
+   * this will be passed as a `?path=` query parameter to the proxy.
+   * This allows tests to use the proxy while targeting a specific workflow server deployment.
+   */
+  workflowServerPath?: string;
   projectConfig?: {
     projectId?: string;
     teamId?: string;
@@ -105,26 +110,25 @@ export interface HttpConfig {
   baseUrl: string;
   headers: Headers;
   usingProxy: boolean;
+  workflowServerPath?: string;
 }
 
 export const getHttpUrl = (
   config?: APIConfig
-): { baseUrl: string; usingProxy: boolean } => {
+): { baseUrl: string; usingProxy: boolean; workflowServerPath?: string } => {
   const projectConfig = config?.projectConfig;
   const defaultUrl = 'https://vercel-workflow.com/api';
   const defaultProxyUrl = 'https://api.vercel.com/v1/workflow';
-  const usingProxy =
-    // Skipping proxy is specifically used for e2e testing. Normally, we assume calls from
-    // CLI and web UI are not running inside the Vercel runtime environment, and so need to
-    // use the proxy for authentication. However, during e2e tests, this is not the case,
-    // so we allow skipping the proxy.
-    !config?.skipProxy &&
-    Boolean(
-      config?.baseUrl || (projectConfig?.projectId && projectConfig?.teamId)
-    );
+  const usingProxy = Boolean(
+    config?.baseUrl || (projectConfig?.projectId && projectConfig?.teamId)
+  );
   const baseUrl =
     config?.baseUrl || (usingProxy ? defaultProxyUrl : defaultUrl);
-  return { baseUrl, usingProxy };
+  return {
+    baseUrl,
+    usingProxy,
+    workflowServerPath: config?.workflowServerPath,
+  };
 };
 
 export const getHeaders = (config?: APIConfig): Headers => {
@@ -152,8 +156,8 @@ export async function getHttpConfig(config?: APIConfig): Promise<HttpConfig> {
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   }
-  const { baseUrl, usingProxy } = getHttpUrl(config);
-  return { baseUrl, headers, usingProxy };
+  const { baseUrl, usingProxy, workflowServerPath } = getHttpUrl(config);
+  return { baseUrl, headers, usingProxy, workflowServerPath };
 }
 
 export async function makeRequest<T>({
@@ -167,13 +171,21 @@ export async function makeRequest<T>({
   config?: APIConfig;
   schema: z.ZodSchema<T>;
 }): Promise<T> {
-  const { baseUrl, headers } = await getHttpConfig(config);
+  const { baseUrl, headers, usingProxy, workflowServerPath } =
+    await getHttpConfig(config);
   headers.set('Content-Type', 'application/json');
   // NOTE: Add a unique header to bypass RSC request memoization.
   // See: https://github.com/vercel/workflow/issues/618
   headers.set('X-Request-Time', Date.now().toString());
 
-  const url = `${baseUrl}${endpoint}`;
+  let url = `${baseUrl}${endpoint}`;
+  // When using the proxy with a custom workflow server path, append it as a query parameter.
+  // This allows tests to use the proxy while targeting a specific workflow server deployment.
+  if (usingProxy && workflowServerPath) {
+    const urlObj = new URL(url);
+    urlObj.searchParams.set('path', workflowServerPath);
+    url = urlObj.toString();
+  }
   const request = new Request(url, {
     ...options,
     headers,
