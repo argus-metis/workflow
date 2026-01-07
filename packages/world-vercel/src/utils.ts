@@ -6,15 +6,15 @@ import type { z } from 'zod';
 import { version } from './version.js';
 
 export interface APIConfig {
+  /**
+   * URL of the workflow server to target. When using the proxy (projectId + teamId provided),
+   * this will be passed as a `?path=` query parameter to the proxy, allowing requests to be
+   * forwarded to a specific workflow server deployment (e.g., for testing against previews).
+   * When not using the proxy, this URL is used directly.
+   */
   baseUrl?: string;
   token?: string;
   headers?: RequestInit['headers'];
-  /**
-   * URL of the workflow server to use. When provided and using the proxy,
-   * this will be passed as a `?path=` query parameter to the proxy.
-   * This allows tests to use the proxy while targeting a specific workflow server deployment.
-   */
-  workflowServerPath?: string;
   projectConfig?: {
     projectId?: string;
     teamId?: string;
@@ -110,24 +110,34 @@ export interface HttpConfig {
   baseUrl: string;
   headers: Headers;
   usingProxy: boolean;
-  workflowServerPath?: string;
+  /** When using proxy, the target server URL to pass as ?path= parameter */
+  targetServerPath?: string;
 }
 
 export const getHttpUrl = (
   config?: APIConfig
-): { baseUrl: string; usingProxy: boolean; workflowServerPath?: string } => {
+): { baseUrl: string; usingProxy: boolean; targetServerPath?: string } => {
   const projectConfig = config?.projectConfig;
   const defaultUrl = 'https://vercel-workflow.com/api';
   const defaultProxyUrl = 'https://api.vercel.com/v1/workflow';
-  const usingProxy = Boolean(
-    config?.baseUrl || (projectConfig?.projectId && projectConfig?.teamId)
-  );
-  const baseUrl =
-    config?.baseUrl || (usingProxy ? defaultProxyUrl : defaultUrl);
+  // Use proxy when both projectId and teamId are provided
+  const usingProxy = Boolean(projectConfig?.projectId && projectConfig?.teamId);
+
+  if (usingProxy) {
+    // When using proxy, always use the hardcoded proxy URL.
+    // If a custom baseUrl is provided, it becomes the target server path
+    // that will be passed as ?path= to the proxy.
+    return {
+      baseUrl: defaultProxyUrl,
+      usingProxy: true,
+      targetServerPath: config?.baseUrl,
+    };
+  }
+
+  // When not using proxy, use baseUrl directly or fall back to default
   return {
-    baseUrl,
-    usingProxy,
-    workflowServerPath: config?.workflowServerPath,
+    baseUrl: config?.baseUrl || defaultUrl,
+    usingProxy: false,
   };
 };
 
@@ -156,8 +166,8 @@ export async function getHttpConfig(config?: APIConfig): Promise<HttpConfig> {
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   }
-  const { baseUrl, usingProxy, workflowServerPath } = getHttpUrl(config);
-  return { baseUrl, headers, usingProxy, workflowServerPath };
+  const { baseUrl, usingProxy, targetServerPath } = getHttpUrl(config);
+  return { baseUrl, headers, usingProxy, targetServerPath };
 }
 
 export async function makeRequest<T>({
@@ -171,7 +181,7 @@ export async function makeRequest<T>({
   config?: APIConfig;
   schema: z.ZodSchema<T>;
 }): Promise<T> {
-  const { baseUrl, headers, usingProxy, workflowServerPath } =
+  const { baseUrl, headers, usingProxy, targetServerPath } =
     await getHttpConfig(config);
   headers.set('Content-Type', 'application/json');
   // NOTE: Add a unique header to bypass RSC request memoization.
@@ -179,11 +189,11 @@ export async function makeRequest<T>({
   headers.set('X-Request-Time', Date.now().toString());
 
   let url = `${baseUrl}${endpoint}`;
-  // When using the proxy with a custom workflow server path, append it as a query parameter.
-  // This allows tests to use the proxy while targeting a specific workflow server deployment.
-  if (usingProxy && workflowServerPath) {
+  // When using the proxy with a target server path, append it as a query parameter.
+  // This allows the proxy to forward requests to a specific workflow server deployment.
+  if (usingProxy && targetServerPath) {
     const urlObj = new URL(url);
-    urlObj.searchParams.set('path', workflowServerPath);
+    urlObj.searchParams.set('path', targetServerPath);
     url = urlObj.toString();
   }
   const request = new Request(url, {
