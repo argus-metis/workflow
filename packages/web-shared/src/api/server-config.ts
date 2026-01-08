@@ -9,6 +9,12 @@
  *
  * Security: This module only exposes specific, allowed environment variables.
  * It does not allow clients to set arbitrary env vars on the server.
+ *
+ * IMPORTANT: We capture a snapshot of the environment at module load time.
+ * This is necessary because getWorldFromEnv() in workflow-server-actions.ts
+ * writes to process.env when initializing a world. We need to distinguish
+ * between env vars that were set at startup (locked) vs. those written later
+ * by the application.
  */
 
 import fs from 'node:fs/promises';
@@ -17,6 +23,35 @@ import {
   findWorkflowDataDir,
   type WorkflowDataDirInfo,
 } from '@workflow/utils/check-data-dir';
+
+/**
+ * Environment variable names we care about for configuration.
+ * Captured at module load time to detect pre-set values.
+ */
+const CONFIG_ENV_VARS = [
+  'WORKFLOW_TARGET_WORLD',
+  'WORKFLOW_VERCEL_ENV',
+  'WORKFLOW_VERCEL_AUTH_TOKEN',
+  'WORKFLOW_VERCEL_PROJECT',
+  'WORKFLOW_VERCEL_TEAM',
+  'PORT',
+  'WORKFLOW_LOCAL_DATA_DIR',
+  'WORKFLOW_MANIFEST_PATH',
+  'WORKFLOW_POSTGRES_URL',
+] as const;
+
+/**
+ * Snapshot of configuration-relevant environment variables captured at module load time.
+ * This allows us to distinguish between:
+ * - Env vars set before the app started (from deployment, CLI args, etc.) - LOCKED
+ * - Env vars written later by getWorldFromEnv() - NOT locked, can be overridden by user
+ */
+const INITIAL_ENV_SNAPSHOT: Record<string, string | undefined> = {};
+
+// Capture initial environment state immediately at module load
+for (const key of CONFIG_ENV_VARS) {
+  INITIAL_ENV_SNAPSHOT[key] = process.env[key];
+}
 
 /**
  * Configuration field with its value and source
@@ -142,11 +177,11 @@ function normalizeBackend(value: string | undefined): string | undefined {
 /**
  * Fetches the server-side configuration.
  *
- * This reads from process.env and returns structured configuration
- * that the client can use to understand what's pre-configured.
+ * This compares the INITIAL_ENV_SNAPSHOT (captured at module load time) with the
+ * current process.env to determine which values were pre-set at startup (locked)
+ * vs. which were written later by the application (editable).
  */
 export async function getServerConfig(): Promise<ServerConfigResult> {
-  const env = process.env;
   const cwd = process.cwd();
 
   // Build config fields from environment
@@ -154,20 +189,25 @@ export async function getServerConfig(): Promise<ServerConfigResult> {
   let hasServerConfig = false;
 
   for (const [key, metadata] of Object.entries(CONFIG_FIELD_METADATA)) {
-    const envValue = env[metadata.envVarName];
-    const hasValue = envValue !== undefined && envValue !== '';
+    // Check the INITIAL snapshot, not current process.env
+    // This ensures we only mark values as "from env" if they were set BEFORE
+    // the app started (not written later by getWorldFromEnv)
+    const initialValue = INITIAL_ENV_SNAPSHOT[metadata.envVarName];
+    const wasSetAtStartup = initialValue !== undefined && initialValue !== '';
 
-    if (hasValue) {
+    if (wasSetAtStartup) {
       hasServerConfig = true;
     }
 
     // Special handling for backend to normalize package names
     const value =
-      key === 'backend' ? normalizeBackend(envValue) : envValue || undefined;
+      key === 'backend'
+        ? normalizeBackend(initialValue)
+        : initialValue || undefined;
 
     config[key as keyof ServerWorldConfig] = {
       value,
-      isFromEnv: hasValue,
+      isFromEnv: wasSetAtStartup,
       label: metadata.label,
       envVarName: metadata.envVarName,
     };
@@ -176,9 +216,7 @@ export async function getServerConfig(): Promise<ServerConfigResult> {
   // Determine operating mode
   let mode: ConfigMode;
   if (hasServerConfig) {
-    // If any server-side config is present, we're in self-hosted mode
-    // The CLI also sets env vars, so we detect CLI mode by checking for specific patterns
-    // CLI typically doesn't set WORKFLOW_LOCAL_DATA_DIR before launching if it's exploratory
+    // If any server-side config was present at startup, we're in self-hosted mode
     mode = 'self-hosted';
   } else {
     mode = 'standalone';
