@@ -26,7 +26,6 @@ export function isLocalDeployment(): boolean {
  *       get rid of this strange matrix
  */
 export function hasStepSourceMaps(): boolean {
-  // Next.js does not consume inline sourcemaps AT ALL for step bundles
   // TODO: we need to fix this
   const appName = process.env.APP_NAME as string;
   if (['nextjs-webpack', 'nextjs-turbopack'].includes(appName)) {
@@ -41,6 +40,12 @@ export function hasStepSourceMaps(): boolean {
   if (process.env.WORKFLOW_VERCEL_ENV === 'production') {
     return false;
   }
+
+  // source mappings are off in local dev with these two
+  // TODO: we need to find where mapping is dropped
+  // if (process.env.DEV_TEST_CONFIG && ['sveltekit', 'astro'].includes(appName)) {
+  //   return false
+  // }
 
   // Vercel preview builds have proper source maps for all other frameworks, EXCEPT sveltekit
   if (!isLocalDeployment()) {
