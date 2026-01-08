@@ -12,6 +12,26 @@ import { getVercelDashboardUrl } from './vercel-api.js';
 export const WEB_PACKAGE_NAME = '@workflow/web';
 export const getHostUrl = (webPort: number) => `http://localhost:${webPort}`;
 
+/**
+ * Workflow-specific environment variables that should NOT be passed to the
+ * spawned web server. These are passed via query params instead, allowing
+ * users to change them in the UI.
+ *
+ * If we pass these to the server's process.env, they get captured in the
+ * server's INITIAL_ENV_SNAPSHOT and are treated as "locked" (from deployment).
+ */
+const WORKFLOW_ENV_VARS_TO_EXCLUDE = [
+  'WORKFLOW_TARGET_WORLD',
+  'WORKFLOW_VERCEL_ENV',
+  'WORKFLOW_VERCEL_AUTH_TOKEN',
+  'WORKFLOW_VERCEL_PROJECT',
+  'WORKFLOW_VERCEL_TEAM',
+  'WORKFLOW_LOCAL_DATA_DIR',
+  'WORKFLOW_MANIFEST_PATH',
+  'WORKFLOW_POSTGRES_URL',
+  // Note: We keep PORT and other system env vars
+];
+
 let serverProcess: ChildProcess | null = null;
 let isServerStarting = false;
 let cleanupHandlersRegistered = false;
@@ -148,20 +168,30 @@ async function startWebServer(webPort: number): Promise<boolean> {
     // about passing args with shell: true
     const shellCommand = `npx next start -p ${webPort}`;
     logger.debug(`Running: ${shellCommand} in ${packagePath}`);
+
+    // Create a clean environment for the web server.
+    // We exclude workflow-specific env vars so they don't get captured in the
+    // server's INITIAL_ENV_SNAPSHOT (which would mark them as "locked").
+    // Instead, these values are passed via query params, allowing users to
+    // change them in the UI.
+    const cleanEnv: NodeJS.ProcessEnv = {};
+    for (const [key, value] of Object.entries(process.env)) {
+      if (!WORKFLOW_ENV_VARS_TO_EXCLUDE.includes(key)) {
+        cleanEnv[key] = value;
+      }
+    }
     logger.debug(
-      `Environment: WORKFLOW_LOCAL_DATA_DIR=${process.env.WORKFLOW_LOCAL_DATA_DIR}`
+      `Starting server with clean env (excluded ${WORKFLOW_ENV_VARS_TO_EXCLUDE.length} workflow vars)`
     );
 
     // Start the Next.js server WITHOUT detaching
     // This keeps it attached to the CLI process
-    // IMPORTANT: Explicitly pass process.env to ensure environment variables
-    // (especially WORKFLOW_LOCAL_DATA_DIR) are inherited by the child process
     serverProcess = spawn(shellCommand, {
       shell: true,
       cwd: packagePath,
       detached: false, // Keep attached so Ctrl+C works
       stdio: ['ignore', 'pipe', 'pipe'], // Pipe output so we can log it if needed
-      env: process.env, // Explicitly inherit environment
+      env: cleanEnv, // Clean environment without workflow-specific vars
     });
 
     // Register cleanup handlers to ensure server is killed on exit
