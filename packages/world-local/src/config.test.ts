@@ -74,7 +74,7 @@ describe('resolveBaseUrl', () => {
       delete process.env.PORT;
 
       await expect(resolveBaseUrl({})).rejects.toThrow(
-        'Unable to resolve base URL for workflow queue.'
+        'Unable to resolve base URL for workflow queue'
       );
       expect(getWorkflowPort).toHaveBeenCalled();
     });
@@ -187,9 +187,18 @@ describe('resolveBaseUrl', () => {
       vi.mocked(getWorkflowPort).mockResolvedValue(undefined);
       delete process.env.PORT;
 
-      await expect(resolveBaseUrl({})).rejects.toThrow(
-        'Unable to resolve base URL for workflow queue.'
-      );
+      await expect(
+        resolveBaseUrl({})
+      ).rejects.toThrowErrorMatchingInlineSnapshot(`
+        [Error: Unable to resolve base URL for workflow queue
+        ├▶ The local world works by making HTTP calls to the .well-known/workflow endpoints[1].
+        │  Therefore, it needs to have a base URL to connect to the local server.
+        ├▶ note: we tried inferring the running port but failed.
+        ├▶ help: fix by setting one of the following environment variables:
+        │  • \`PORT\` to use \`http://localhost:PORT\`
+        │  • \`WORKFLOW_LOCAL_BASE_URL\` as a full URL
+        ╰▶ [1]: Read more about .well-known endpoints: https://useworkflow.dev/docs/how-it-works/framework-integrations#understanding-the-endpoints]
+      `);
     });
   });
 
@@ -235,9 +244,18 @@ describe('resolveBaseUrl', () => {
       vi.mocked(getWorkflowPort).mockResolvedValue(undefined);
       delete process.env.PORT;
 
-      await expect(resolveBaseUrl({})).rejects.toThrow(
-        'Unable to resolve base URL for workflow queue.'
-      );
+      await expect(
+        resolveBaseUrl({})
+      ).rejects.toThrowErrorMatchingInlineSnapshot(`
+        [Error: Unable to resolve base URL for workflow queue
+        ├▶ The local world works by making HTTP calls to the .well-known/workflow endpoints[1].
+        │  Therefore, it needs to have a base URL to connect to the local server.
+        ├▶ note: we tried inferring the running port but failed.
+        ├▶ help: fix by setting one of the following environment variables:
+        │  • \`PORT\` to use \`http://localhost:PORT\`
+        │  • \`WORKFLOW_LOCAL_BASE_URL\` as a full URL
+        ╰▶ [1]: Read more about .well-known endpoints: https://useworkflow.dev/docs/how-it-works/framework-integrations#understanding-the-endpoints]
+      `);
     });
 
     it('should throw error when all resolution methods fail', async () => {
@@ -245,9 +263,18 @@ describe('resolveBaseUrl', () => {
       vi.mocked(getWorkflowPort).mockResolvedValue(undefined);
       delete process.env.PORT;
 
-      await expect(resolveBaseUrl({})).rejects.toThrow(
-        'Unable to resolve base URL for workflow queue.'
-      );
+      await expect(
+        resolveBaseUrl({})
+      ).rejects.toThrowErrorMatchingInlineSnapshot(`
+        [Error: Unable to resolve base URL for workflow queue
+        ├▶ The local world works by making HTTP calls to the .well-known/workflow endpoints[1].
+        │  Therefore, it needs to have a base URL to connect to the local server.
+        ├▶ note: we tried inferring the running port but failed.
+        ├▶ help: fix by setting one of the following environment variables:
+        │  • \`PORT\` to use \`http://localhost:PORT\`
+        │  • \`WORKFLOW_LOCAL_BASE_URL\` as a full URL
+        ╰▶ [1]: Read more about .well-known endpoints: https://useworkflow.dev/docs/how-it-works/framework-integrations#understanding-the-endpoints]
+      `);
     });
 
     it('should handle config with only dataDir and use PORT env var', async () => {
@@ -281,8 +308,19 @@ describe('resolveBaseUrl', () => {
       vi.mocked(getWorkflowPort).mockResolvedValue(undefined);
       delete process.env.PORT;
 
-      await expect(resolveBaseUrl({})).rejects.toThrow(
-        'Unable to resolve base URL for workflow queue.'
+      await expect(
+        resolveBaseUrl({})
+      ).rejects.toThrowErrorMatchingInlineSnapshot(
+        `
+        [Error: Unable to resolve base URL for workflow queue
+        ├▶ The local world works by making HTTP calls to the .well-known/workflow endpoints[1].
+        │  Therefore, it needs to have a base URL to connect to the local server.
+        ├▶ note: we tried inferring the running port but failed.
+        ├▶ help: fix by setting one of the following environment variables:
+        │  • \`PORT\` to use \`http://localhost:PORT\`
+        │  • \`WORKFLOW_LOCAL_BASE_URL\` as a full URL
+        ╰▶ [1]: Read more about .well-known endpoints: https://useworkflow.dev/docs/how-it-works/framework-integrations#understanding-the-endpoints]
+      `
       );
     });
   });

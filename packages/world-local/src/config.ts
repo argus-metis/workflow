@@ -52,7 +52,7 @@ export async function resolveBaseUrl(config: Partial<Config>): Promise<string> {
 
   throw new Error(
     Ansi.frame(`Unable to resolve base URL for workflow queue`, [
-      'The local world works by making HTTP calls to the .well-known/workflow endpoints[1].\n' +
+      `The local world works by making HTTP calls to the .well-known/workflow endpoints[1].\n` +
         'Therefore, it needs to have a base URL to connect to the local server.',
       Ansi.note('we tried inferring the running port but failed.'),
       Ansi.help([
@@ -60,7 +60,7 @@ export async function resolveBaseUrl(config: Partial<Config>): Promise<string> {
         `• ${Ansi.code('PORT')} to use ${Ansi.code('http://localhost:PORT')}`,
         `• ${Ansi.code('WORKFLOW_LOCAL_BASE_URL')} as a full URL`,
       ]),
-      'Read more about .well-known endpoints: https://useworkflow.dev/docs/how-it-works/framework-integrations#understanding-the-endpoints',
+      '[1]: Read more about .well-known endpoints: https://useworkflow.dev/docs/how-it-works/framework-integrations#understanding-the-endpoints',
     ])
   );
 }
