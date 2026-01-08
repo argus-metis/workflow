@@ -159,6 +159,9 @@ export const getHeaders = (config?: APIConfig): Headers => {
       headers.set('x-vercel-team-id', projectConfig.teamId);
     }
   }
+  if (projectConfig?.projectId && projectConfig?.teamId) {
+    headers.set('x-vercel-workflow-api-url', `${config?.baseUrl}`);
+  }
   return headers;
 };
 
