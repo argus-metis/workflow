@@ -118,22 +118,22 @@ export class WebServer {
     const shellCommand = `npx next start -p ${this.config.port}`;
     console.log(`[WebServer] Starting: ${shellCommand}`);
 
+    // Create env object and properly remove workflow-specific vars
+    // (Setting to undefined doesn't actually delete the property)
+    const env = { ...process.env };
+    delete env.WORKFLOW_TARGET_WORLD;
+    delete env.WORKFLOW_VERCEL_ENV;
+    delete env.WORKFLOW_VERCEL_AUTH_TOKEN;
+    delete env.WORKFLOW_VERCEL_PROJECT;
+    delete env.WORKFLOW_VERCEL_TEAM;
+    delete env.WORKFLOW_LOCAL_DATA_DIR;
+
     this.process = spawn(shellCommand, {
       shell: true,
       cwd: webPackagePath,
       detached: false,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: {
-        ...process.env,
-        // Don't pass workflow-specific env vars to the server
-        // They will be passed via query params
-        WORKFLOW_TARGET_WORLD: undefined,
-        WORKFLOW_VERCEL_ENV: undefined,
-        WORKFLOW_VERCEL_AUTH_TOKEN: undefined,
-        WORKFLOW_VERCEL_PROJECT: undefined,
-        WORKFLOW_VERCEL_TEAM: undefined,
-        WORKFLOW_LOCAL_DATA_DIR: undefined,
-      },
+      env,
     });
 
     // Log server output
