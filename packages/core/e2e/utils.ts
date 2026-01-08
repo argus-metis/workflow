@@ -30,7 +30,7 @@ export function hasStepSourceMaps(): boolean {
   // TODO: we need to fix this
   const appName = process.env.APP_NAME as string;
   if (['nextjs-webpack', 'nextjs-turbopack'].includes(appName)) {
-    if (isLocalDeployment()) {
+    if (isLocalDeployment() && process.platform !== 'win32') {
       return true;
     }
     // Next.js apps on Vercel don't enable source map support by default
