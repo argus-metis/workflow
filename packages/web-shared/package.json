@@ -21,6 +21,10 @@
     "./server": {
       "types": "./dist/api/workflow-server-actions.d.ts",
       "default": "./dist/api/workflow-server-actions.js"
+    },
+    "./api/server-config": {
+      "types": "./dist/api/server-config.d.ts",
+      "default": "./dist/api/server-config.js"
     }
   },
   "repository": {
@@ -40,6 +44,7 @@
     "@tailwindcss/postcss": "4",
     "@workflow/core": "workspace:*",
     "@workflow/errors": "workspace:*",
+    "@workflow/utils": "workspace:*",
     "@workflow/world": "workspace:*",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",

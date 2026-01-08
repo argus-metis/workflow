@@ -22,7 +22,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import { toast } from 'sonner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -52,9 +52,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { worldConfigToEnvMap } from '@/lib/config';
-import type { WorldConfig } from '@/lib/config-world';
-import { useDataDirInfo } from '@/lib/hooks';
+import { useWorldConfig } from '@/lib/world-config-context';
 import { useTableSelection } from '@/lib/hooks/use-table-selection';
 import { CopyableText } from './display-utils/copyable-text';
 import { RelativeTime } from './display-utils/relative-time';
@@ -164,7 +162,7 @@ function LazyDropdownMenu({
 }
 
 interface RunsTableProps {
-  config: WorldConfig;
+  env: EnvMap;
   onRunClick: (runId: string) => void;
 }
 
@@ -364,10 +362,11 @@ function FilterControls({
  * Uses the PaginatingTable pattern: fetches data for each page as needed from the server.
  * The table and fetching behavior are intertwined - pagination controls trigger new API calls.
  */
-export function RunsTable({ config, onRunClick }: RunsTableProps) {
+export function RunsTable({ env, onRunClick }: RunsTableProps) {
   const searchParams = useSearchParams();
   const handleWorkflowFilter = useWorkflowFilter();
   const handleStatusFilter = useStatusFilter();
+  const { effectiveConfig, dataDirInfo } = useWorldConfig();
 
   // Validate status parameter - only allow known valid statuses or 'all'
   const rawStatus = searchParams.get('status');
@@ -383,15 +382,13 @@ export function RunsTable({ config, onRunClick }: RunsTableProps) {
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(
     () => new Date()
   );
-  const env = useMemo(() => worldConfigToEnvMap(config), [config]);
-  const isLocal = config.backend === 'local' || !config.backend;
-  const { data: dataDirInfo, isLoading: dataDirInfoLoading } = useDataDirInfo(
-    config.dataDir
-  );
+  const backend = effectiveConfig.backend.value || 'local';
+  const isLocal = backend === 'local' || backend === '@workflow/world-local';
+  const dataDirInfoLoading = false; // Context handles loading state
 
   // TODO: World-vercel doesn't support filtering by status without a workflow name filter
   const statusFilterRequiresWorkflowNameFilter =
-    config.backend?.includes('vercel') || false;
+    backend.includes('vercel') || false;
   // TODO: This is a workaround. We should be getting a list of valid workflow names
   // from the manifest.
   const [seenWorkflowNames, setSeenWorkflowNames] = useState<Set<string>>(
@@ -536,7 +533,7 @@ export function RunsTable({ config, onRunClick }: RunsTableProps) {
 
   const localDirText = (
     <code className="font-mono">
-      {dataDirInfo?.shortName || 'current directory'}
+      {dataDirInfo?.projectDir || 'current directory'}
     </code>
   );
 
@@ -571,6 +568,12 @@ export function RunsTable({ config, onRunClick }: RunsTableProps) {
             No workflow runs found
             {isLocalAndHasMissingData ? <> in {localDirText}</> : ''}.
           </span>
+          {isLocalAndHasMissingData && (
+            <span className="text-sm flex items-center gap-2">
+              If this is not your project folder, you may need to change your
+              configuration.
+            </span>
+          )}
           {isLocalAndHasMissingData && (
             <span className="text-sm flex items-center gap-2">
               This view will update once you run a workflow.

@@ -1,67 +1,109 @@
 'use client';
 
-import { InfoIcon } from 'lucide-react';
+import { Info, Lock } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import type { WorkflowDataDirInfo, WorldConfig } from '@/lib/config-world';
-import { useDataDirInfo } from '@/lib/hooks';
+import { useWorldConfig } from '@/lib/world-config-context';
 
-interface ConnectionStatusProps {
-  config: WorldConfig;
-}
+/**
+ * Displays the current connection status and configuration mode.
+ * Shows which backend is being used and where the config comes from.
+ */
+export function ConnectionStatus() {
+  const { mode, isLoading, effectiveConfig, dataDirInfo } = useWorldConfig();
 
-const getConnectionInfo = (
-  backend: string,
-  config: WorldConfig,
-  dataDirInfo: WorkflowDataDirInfo | null | undefined
-): { provider: string; parts: string[] } => {
-  if (backend === 'vercel') {
-    const parts: string[] = [];
-    if (config.env) parts.push(`env: ${config.env}`);
-    if (config.project) parts.push(`project: ${config.project}`);
-    if (config.team) parts.push(`team: ${config.team}`);
-
-    return { provider: 'Vercel', parts };
+  if (isLoading) {
+    return (
+      <div className="text-sm text-muted-foreground flex items-center gap-2">
+        <span className="animate-pulse">Loading...</span>
+      </div>
+    );
   }
 
-  if (backend === 'local') {
-    // Local backend - show projectDir instead of raw dataDir
-    const parts: string[] = [];
+  const backend = effectiveConfig.backend.value || 'local';
+  const backendSource = effectiveConfig.backend.source;
+  const isFromEnv = backendSource === 'env';
+
+  // Determine display name for backend
+  const backendDisplayNames: Record<string, string> = {
+    local: 'Local',
+    vercel: 'Vercel',
+    postgres: 'PostgreSQL',
+    '@workflow/world-local': 'Local',
+    '@workflow/world-vercel': 'Vercel',
+    '@workflow/world-postgres': 'PostgreSQL',
+  };
+  const backendName = backendDisplayNames[backend] || backend;
+
+  // Build subtitle based on backend type
+  let subtitle = '';
+  if (backend === 'local' || backend === '@workflow/world-local') {
+    subtitle = dataDirInfo?.shortName || '';
+  } else if (backend === 'vercel' || backend === '@workflow/world-vercel') {
+    subtitle = effectiveConfig.vercelEnv.value || '';
+  }
+
+  // Build tooltip parts
+  const parts: string[] = [];
+
+  if (backend === 'local' || backend === '@workflow/world-local') {
     if (dataDirInfo?.projectDir) {
-      parts.push(`project: ${dataDirInfo.projectDir}`);
+      parts.push(`Project: ${dataDirInfo.projectDir}`);
     }
-    if (config.port) parts.push(`port: ${config.port}`);
-
-    return { provider: 'Local', parts };
+    if (effectiveConfig.port.value) {
+      parts.push(`Port: ${effectiveConfig.port.value}`);
+    }
+  } else if (backend === 'vercel' || backend === '@workflow/world-vercel') {
+    if (effectiveConfig.vercelEnv.value) {
+      parts.push(`Environment: ${effectiveConfig.vercelEnv.value}`);
+    }
+    if (effectiveConfig.vercelProject.value) {
+      parts.push(`Project: ${effectiveConfig.vercelProject.value}`);
+    }
+    if (effectiveConfig.vercelTeam.value) {
+      parts.push(`Team: ${effectiveConfig.vercelTeam.value}`);
+    }
+  } else if (backend === 'postgres' || backend === '@workflow/world-postgres') {
+    if (effectiveConfig.postgresUrl.value) {
+      // Only show host part of connection string for security
+      try {
+        const url = new URL(effectiveConfig.postgresUrl.value);
+        parts.push(`Host: ${url.hostname}`);
+        if (url.pathname) {
+          parts.push(`Database: ${url.pathname.slice(1)}`);
+        }
+      } catch {
+        parts.push('Connection configured');
+      }
+    }
   }
 
-  return { provider: config.backend || 'unknown', parts: [] };
-};
+  // Add config source info
+  const modeLabels: Record<string, string> = {
+    'self-hosted': 'Self-hosted (env vars)',
+    cli: 'CLI',
+    standalone: 'Manual configuration',
+  };
+  parts.push(`Mode: ${modeLabels[mode] || mode}`);
 
-export function ConnectionStatus({ config }: ConnectionStatusProps) {
-  const backend = config.backend || 'local';
-  const { data: dataDirInfo } = useDataDirInfo(config.dataDir);
-  const { provider, parts } = getConnectionInfo(backend, config, dataDirInfo);
-  const subString =
-    backend === 'local'
-      ? dataDirInfo?.shortName
-      : backend === 'vercel'
-        ? config.env
-        : undefined;
   return (
     <div className="text-sm text-muted-foreground flex items-center gap-2">
-      <span className="font-medium">
-        Connected to: {provider} {subString ? `(${subString})` : ''}
+      <span className="font-medium flex items-center gap-1.5">
+        {isFromEnv && <Lock className="w-3 h-3 text-blue-500" />}
+        Connected to: {backendName}
+        {subtitle && (
+          <span className="text-muted-foreground">({subtitle})</span>
+        )}
       </span>
       <Tooltip>
         <TooltipTrigger asChild>
-          <InfoIcon className="w-4 h-4" />
+          <Info className="w-4 h-4 cursor-help" />
         </TooltipTrigger>
         <TooltipContent>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 text-xs">
             {parts.map((part) => (
               <span key={part}>{part}</span>
             ))}

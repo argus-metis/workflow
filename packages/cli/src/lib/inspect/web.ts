@@ -144,13 +144,14 @@ async function startWebServer(webPort: number): Promise<boolean> {
 
   try {
     logger.info('Starting web UI server...');
-    const command = 'npx';
-    const args = ['next', 'start', '-p', String(webPort)];
-    logger.debug(`Running ${command} ${args.join(' ')} in ${packagePath}`);
+    // Use a single shell command string to avoid deprecation warning
+    // about passing args with shell: true
+    const shellCommand = `npx next start -p ${webPort}`;
+    logger.debug(`Running: ${shellCommand} in ${packagePath}`);
 
     // Start the Next.js server WITHOUT detaching
     // This keeps it attached to the CLI process
-    serverProcess = spawn(command, args, {
+    serverProcess = spawn(shellCommand, {
       shell: true,
       cwd: packagePath,
       detached: false, // Keep attached so Ctrl+C works

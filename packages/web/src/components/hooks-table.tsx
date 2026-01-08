@@ -20,7 +20,7 @@ import {
   RotateCw,
   XCircle,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -45,14 +45,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { worldConfigToEnvMap } from '@/lib/config';
-import type { WorldConfig } from '@/lib/config-world';
+import type { EnvMap } from '@workflow/web-shared';
 import { CopyableText } from './display-utils/copyable-text';
 import { RelativeTime } from './display-utils/relative-time';
 import { TableSkeleton } from './display-utils/table-skeleton';
 
 interface HooksTableProps {
-  config: WorldConfig;
+  env: EnvMap;
   runId?: string;
   onHookClick: (hookId: string, runId?: string) => void;
   selectedHookId?: string;
@@ -70,7 +69,7 @@ interface InvocationData {
  * Fetches invocation counts in the background for each hook.
  */
 export function HooksTable({
-  config,
+  env,
   runId,
   onHookClick,
   selectedHookId,
@@ -78,7 +77,6 @@ export function HooksTable({
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(
     () => new Date()
   );
-  const env = useMemo(() => worldConfigToEnvMap(config), [config]);
 
   const {
     data,
