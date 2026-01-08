@@ -31,7 +31,7 @@ export const createWorld = (): World => {
   const targetWorld = process.env.WORKFLOW_TARGET_WORLD || defaultWorld();
 
   if (targetWorld === 'vercel') {
-    return createVercelWorld({
+    const config = {
       baseUrl: process.env.WORKFLOW_VERCEL_BACKEND_URL,
       token: process.env.WORKFLOW_VERCEL_AUTH_TOKEN,
       projectConfig: {
@@ -39,7 +39,15 @@ export const createWorld = (): World => {
         projectId: process.env.WORKFLOW_VERCEL_PROJECT,
         teamId: process.env.WORKFLOW_VERCEL_TEAM,
       },
-    });
+    };
+    if (process.env.DEBUG === '1') {
+      console.error('[world] createVercelWorld config:', {
+        baseUrl: config.baseUrl,
+        hasToken: !!config.token,
+        projectConfig: config.projectConfig,
+      });
+    }
+    return createVercelWorld(config);
   }
 
   if (targetWorld === 'local') {

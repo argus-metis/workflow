@@ -203,6 +203,11 @@ export async function makeRequest<T>({
     urlObj.searchParams.set('path', targetServerPath);
     url = urlObj.toString();
   }
+  if (process.env.DEBUG === '1') {
+    console.error(
+      `[world-vercel] makeRequest: usingProxy=${usingProxy}, targetServerPath=${targetServerPath}, url=${url}`
+    );
+  }
   const request = new Request(url, {
     ...options,
     headers,
