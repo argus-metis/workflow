@@ -13,7 +13,6 @@ export const WorkflowRunStatusSchema = z.enum([
   'running',
   'completed',
   'failed',
-  'paused',
   'cancelled',
 ]);
 
@@ -26,6 +25,7 @@ export const WorkflowRunBaseSchema = z.object({
   status: WorkflowRunStatusSchema,
   deploymentId: z.string(),
   workflowName: z.string(),
+  specVersion: z.string().optional(),
   executionContext: z.record(z.string(), z.any()).optional(),
   input: z.array(z.any()),
   output: z.any().optional(),
@@ -41,7 +41,7 @@ export const WorkflowRunBaseSchema = z.object({
 export const WorkflowRunSchema = z.discriminatedUnion('status', [
   // Non-final states
   WorkflowRunBaseSchema.extend({
-    status: z.enum(['pending', 'running', 'paused']),
+    status: z.enum(['pending', 'running']),
     output: z.undefined(),
     error: z.undefined(),
     completedAt: z.undefined(),
@@ -100,13 +100,5 @@ export interface ListWorkflowRunsParams {
 }
 
 export interface CancelWorkflowRunParams {
-  resolveData?: ResolveData;
-}
-
-export interface PauseWorkflowRunParams {
-  resolveData?: ResolveData;
-}
-
-export interface ResumeWorkflowRunParams {
   resolveData?: ResolveData;
 }

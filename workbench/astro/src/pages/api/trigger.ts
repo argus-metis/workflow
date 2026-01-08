@@ -1,4 +1,3 @@
-import type { APIRoute } from 'astro';
 import { getRun, start } from 'workflow/api';
 import {
   WorkflowRunFailedError,
@@ -6,6 +5,7 @@ import {
 } from 'workflow/internal/errors';
 import { hydrateWorkflowArguments } from 'workflow/internal/serialization';
 import { allWorkflows } from '../../lib/_workflows';
+import type { APIRoute } from 'astro';
 
 export async function POST({ request }: { request: Request }) {
   const url = new URL(request.url);
