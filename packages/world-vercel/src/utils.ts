@@ -5,8 +5,9 @@ import { type StructuredError, StructuredErrorSchema } from '@workflow/world';
 import type { z } from 'zod';
 import { version } from './version.js';
 
-export const defaultUrl =
-  'https://workflow-server-git-peter-remove-old-redis.vercel.sh/api';
+export const defaultUrl = 'https://vercel-workflow.com/api';
+// export const defaultUrl =
+// 'https://workflow-server-git-peter-remove-old-redis.vercel.sh/api';
 export const defaultProxyUrl = 'https://api.vercel.com/v1/workflow';
 export const DEFAULT_RESOLVE_DATA_OPTION = 'all';
 export interface APIConfig {
@@ -121,10 +122,8 @@ export const getHttpUrl = (
 ): { baseUrl: string; usingProxy: boolean; targetServerPath?: string } => {
   const projectConfig = config?.projectConfig;
 
-  // Use proxy when both projectId and teamId are provided
-  const usingProxy =
-    Boolean(projectConfig?.projectId && projectConfig?.teamId) ||
-    config?.baseUrl?.includes('api.vercel.com/v1/workflow');
+  // Use proxy when both projectId and teamId are provided explicitly
+  const usingProxy = Boolean(projectConfig?.projectId && projectConfig?.teamId);
 
   if (usingProxy) {
     // When using proxy, always use the hardcoded proxy URL.
