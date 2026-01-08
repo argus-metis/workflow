@@ -99,7 +99,9 @@ export default function workflowLoader(
     inlineSourcesContent: true,
   }).then(
     (result) => {
-      callback(null, result.code);
+      // Parse and pass the source map to webpack for proper source map chaining
+      const map = result.map ? JSON.parse(result.map) : undefined;
+      callback(null, result.code, map);
     },
     (err) => {
       callback(err);
