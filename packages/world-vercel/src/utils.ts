@@ -160,7 +160,9 @@ export const getHeaders = (config?: APIConfig): Headers => {
     }
   }
   if (projectConfig?.projectId && projectConfig?.teamId) {
-    headers.set('x-vercel-workflow-api-url', `${config?.baseUrl}`);
+    if (config?.baseUrl) {
+      headers.set('x-vercel-workflow-api-url', config.baseUrl);
+    }
   }
   return headers;
 };
