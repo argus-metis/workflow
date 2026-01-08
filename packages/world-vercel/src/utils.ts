@@ -5,7 +5,8 @@ import { type StructuredError, StructuredErrorSchema } from '@workflow/world';
 import type { z } from 'zod';
 import { version } from './version.js';
 
-export const defaultUrl = 'https://vercel-workflow.com/api';
+export const defaultUrl =
+  'https://workflow-server-git-peter-remove-old-redis.vercel.sh/api';
 export const defaultProxyUrl = 'https://api.vercel.com/v1/workflow';
 export const DEFAULT_RESOLVE_DATA_OPTION = 'all';
 export interface APIConfig {
