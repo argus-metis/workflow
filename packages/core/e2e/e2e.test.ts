@@ -603,16 +603,45 @@ describe('e2e', () => {
             // TODO: Known issue - workflow error stack traces are muddled when
             //       running sveltekit in dev mode
             if (
-              !process.env.DEV_TEST_CONFIG ||
-              process.env.APP_NAME !== 'sveltekit'
+              !(
+                process.env.DEV_TEST_CONFIG &&
+                process.env.APP_NAME === 'sveltekit'
+              )
             ) {
-              // Stack shows call chain: errorNested1 -> errorNested2 -> errorNested3
-              expect(result.cause.stack).toContain('errorNested1');
-              expect(result.cause.stack).toContain('errorNested2');
-              expect(result.cause.stack).toContain('errorNested3');
-              expect(result.cause.stack).toContain('errorWorkflowNested');
-              expect(result.cause.stack).toContain('99_e2e.ts');
-              expect(result.cause.stack).not.toContain('evalmachine');
+              // Stack shows call chain: errorNested3 (threw) <- errorNested2 <- errorNested1 <- errorWorkflowNested
+              const stack = result.cause.stack;
+              expect(stack).toContain('errorNested3');
+              expect(stack).toContain('errorNested2');
+              expect(stack).toContain('errorNested1');
+              expect(stack).toContain('errorWorkflowNested');
+              expect(stack).toContain('99_e2e.ts');
+              expect(stack).not.toContain('evalmachine');
+
+              // Verify the call chain order in stack trace (errorNested3 should appear first since it threw)
+              const errorNested3Idx = stack.indexOf('errorNested3');
+              const errorNested2Idx = stack.indexOf('errorNested2');
+              const errorNested1Idx = stack.indexOf('errorNested1');
+              const errorWorkflowNestedIdx = stack.indexOf(
+                'errorWorkflowNested'
+              );
+
+              expect(errorNested3Idx).toBeLessThan(errorNested2Idx);
+              expect(errorNested2Idx).toBeLessThan(errorNested1Idx);
+              expect(errorNested1Idx).toBeLessThan(errorWorkflowNestedIdx);
+
+              // Workflow source maps are not properly supported everywhere. Check the definition
+              // of hasWorkflowSourceMaps() to see where they are supported
+              if (hasWorkflowSourceMaps()) {
+                expect(stack).toContain('99_e2e.ts:568:8');
+                expect(stack).toContain('99_e2e.ts:572:2');
+                expect(stack).toContain('99_e2e.ts:576:2');
+                expect(stack).toContain('99_e2e.ts:582:2');
+              } else {
+                expect(stack).not.toContain('99_e2e.ts:568:8');
+                expect(stack).not.toContain('99_e2e.ts:572:2');
+                expect(stack).not.toContain('99_e2e.ts:576:2');
+                expect(stack).not.toContain('99_e2e.ts:582:2');
+              }
             }
 
             const { json: runData } = await cliInspectJson(`runs ${run.runId}`);
@@ -635,8 +664,10 @@ describe('e2e', () => {
             // TODO: Known issue - workflow error stack traces are muddled when
             //       running sveltekit in dev mode
             if (
-              !process.env.DEV_TEST_CONFIG ||
-              process.env.APP_NAME !== 'sveltekit'
+              !(
+                process.env.DEV_TEST_CONFIG &&
+                process.env.APP_NAME === 'sveltekit'
+              )
             ) {
               expect(result.cause.stack).toContain('throwError');
               expect(result.cause.stack).toContain('callThrower');
@@ -646,9 +677,13 @@ describe('e2e', () => {
               // Workflow source maps are not properly supported everyhwere. Check the definition
               // of hasWorkflowSourceMaps() to see where they are supported
               if (hasWorkflowSourceMaps()) {
-                expect(result.cause.stack).toContain('helpers.ts');
+                expect(result.cause.stack).toContain('helpers.ts:10:8');
+                expect(result.cause.stack).toContain('helpers.ts:15:2');
+                expect(result.cause.stack).toContain('99_e2e.ts:589:2');
               } else {
-                expect(result.cause.stack).not.toContain('helpers.ts');
+                expect(result.cause.stack).not.toContain('helpers.ts:10:8');
+                expect(result.cause.stack).not.toContain('helpers.ts:15:2');
+                expect(result.cause.stack).not.toContain('99_e2e.ts:589:2');
               }
             }
 
@@ -679,7 +714,7 @@ describe('e2e', () => {
               expect(result.stack).toContain('99_e2e.ts:597:9');
             } else {
               // test negated in case we fix it
-              expect(result.stack).not.toContain('99_e2e.ts');
+              expect(result.stack).not.toContain('99_e2e.ts:597:9');
             }
 
             // Verify step failed via CLI (--withData needed to resolve errorRef)
@@ -699,10 +734,10 @@ describe('e2e', () => {
             // Source maps are not supported everyhwere. Check the definition
             // of hasStepSourceMaps() to see where they are supported
             if (hasStepSourceMaps()) {
-              expect(failedStep.error.stack).toContain('99_e2e.ts');
+              expect(failedStep.error.stack).toContain('99_e2e.ts:597:9');
             } else {
               // test negated in case we fix it
-              expect(failedStep.error.stack).not.toContain('99_e2e.ts');
+              expect(failedStep.error.stack).not.toContain('99_e2e.ts:597:9');
             }
 
             // Workflow completed (error was caught)
@@ -732,9 +767,11 @@ describe('e2e', () => {
             // of hasStepSourceMaps() to see where they are supported
             if (hasStepSourceMaps()) {
               expect(result.stack).toContain('helpers.ts:21:9');
+              expect(result.stack).toContain('helpers.ts:27:3');
             } else {
               // test negated in case we fix it
               expect(result.stack).not.toContain('helpers.ts:21:9');
+              expect(result.stack).not.toContain('helpers.ts:27:3');
             }
 
             // Verify step failed via CLI - same stack info available there too (--withData needed to resolve errorRef)
@@ -753,7 +790,12 @@ describe('e2e', () => {
             // Source maps are not supported everyhwere. Check the definition
             // of hasStepSourceMaps() to see where they are supported
             if (hasStepSourceMaps()) {
-              expect(failedStep.error.stack).toContain('helpers.ts');
+              expect(failedStep.error.stack).toContain('helpers.ts:21:9');
+              expect(failedStep.error.stack).toContain('helpers.ts:27:3');
+            } else {
+              // test negated in case we fix it
+              expect(failedStep.error.stack).not.toContain('helpers.ts:21:9');
+              expect(failedStep.error.stack).not.toContain('helpers.ts:27:3');
             }
 
             // Workflow completed (error was caught)
