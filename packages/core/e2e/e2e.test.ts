@@ -676,7 +676,7 @@ describe('e2e', () => {
             // Source maps are not supported everyhwere. Check the definition
             // of hasStepSourceMaps() to see where they are supported
             if (hasStepSourceMaps()) {
-              expect(result.stack).toContain('99_e2e.ts');
+              expect(result.stack).toContain('99_e2e.ts:597:9');
             }
 
             // Verify step failed via CLI (--withData needed to resolve errorRef)
@@ -697,6 +697,9 @@ describe('e2e', () => {
             // of hasStepSourceMaps() to see where they are supported
             if (hasStepSourceMaps()) {
               expect(failedStep.error.stack).toContain('99_e2e.ts');
+            } else {
+              // test negated in case we fix it
+              expect(failedStep.error.stack).not.toContain('99_e2e.ts');
             }
 
             // Workflow completed (error was caught)
@@ -725,7 +728,10 @@ describe('e2e', () => {
             // Source maps are not supported everyhwere. Check the definition
             // of hasStepSourceMaps() to see where they are supported
             if (hasStepSourceMaps()) {
-              expect(result.stack).toContain('helpers.ts');
+              expect(result.stack).toContain('helpers.ts:21:9');
+            } else {
+              // test negated in case we fix it
+              expect(result.stack).not.toContain('helpers.ts:21:9');
             }
 
             // Verify step failed via CLI - same stack info available there too (--withData needed to resolve errorRef)
