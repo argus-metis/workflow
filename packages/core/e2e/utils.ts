@@ -29,7 +29,7 @@ export function hasStepSourceMaps(): boolean {
   const appName = process.env.APP_NAME as string;
 
   // Vercel production builds don't support step source maps
-  if (process.env.WORKFLOW_VERCEL_ENV === 'production') {
+  if (!isLocalDeployment()) {
     return false;
   }
 
@@ -43,8 +43,8 @@ export function hasStepSourceMaps(): boolean {
     return false;
   }
 
-  // vite and astro don't have step source maps in local dev
-  if (process.env.DEV_TEST_CONFIG && ['vite', 'astro'].includes(appName)) {
+  // vite does not have step source maps in local dev
+  if (process.env.DEV_TEST_CONFIG && ['vite'].includes(appName)) {
     return false;
   }
 

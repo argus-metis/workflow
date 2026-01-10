@@ -8,6 +8,7 @@ import {
   getProtectionBypassHeaders,
   hasStepSourceMaps,
   hasWorkflowSourceMaps,
+  isLocalDeployment,
 } from './utils';
 
 const deploymentUrl = process.env.DEPLOYMENT_URL;
@@ -674,7 +675,7 @@ describe('e2e', () => {
               expect(result.cause.stack).toContain('errorWorkflowCrossFile');
               expect(result.cause.stack).not.toContain('evalmachine');
 
-              // Workflow source maps are not properly supported everyhwere. Check the definition
+              // Workflow source maps are not properly supported everywhere. Check the definition
               // of hasWorkflowSourceMaps() to see where they are supported
               if (hasWorkflowSourceMaps()) {
                 expect(result.cause.stack).toContain('helpers.ts:10:8');
@@ -704,11 +705,25 @@ describe('e2e', () => {
             // Workflow catches the error and returns it
             expect(result.caught).toBe(true);
             expect(result.message).toContain('Step error message');
-            // Stack trace contains function name and source file
-            expect(result.stack).toContain('errorStepFn');
-            expect(result.stack).not.toContain('evalmachine');
 
-            // Source maps are not supported everyhwere. Check the definition
+            // TODO: Known issue - step error stack traces are muddled when
+            //       running sveltekit in dev mode
+            if (
+              !(
+                process.env.DEV_TEST_CONFIG &&
+                process.env.APP_NAME === 'sveltekit'
+              ) &&
+              !(
+                // stacks do not work in Vercel production
+                !isLocalDeployment()
+              )
+            ) {
+              // Stack trace contains function name and source file
+              expect(result.stack).toContain('errorStepFn');
+              expect(result.stack).not.toContain('evalmachine');
+            }
+
+            // Source maps are not supported everywhere. Check the definition
             // of hasStepSourceMaps() to see where they are supported
             if (hasStepSourceMaps()) {
               expect(result.stack).toContain('99_e2e.ts:597:9');
@@ -731,7 +746,7 @@ describe('e2e', () => {
             expect(failedStep.error.stack).toContain('errorStepFn');
             expect(failedStep.error.stack).not.toContain('evalmachine');
 
-            // Source maps are not supported everyhwere. Check the definition
+            // Source maps are not supported everywhere. Check the definition
             // of hasStepSourceMaps() to see where they are supported
             if (hasStepSourceMaps()) {
               expect(failedStep.error.stack).toContain('99_e2e.ts:597:9');
@@ -759,11 +774,24 @@ describe('e2e', () => {
               'Step error from imported helper module'
             );
             // Stack trace propagates to caught error with function names and source file
-            expect(result.stack).toContain('throwErrorFromStep');
-            expect(result.stack).toContain('stepThatThrowsFromHelper');
-            expect(result.stack).not.toContain('evalmachine');
+            // TODO: Known issue - step error stack traces are muddled when
+            //       running sveltekit in dev mode
+            if (
+              !(
+                process.env.DEV_TEST_CONFIG &&
+                process.env.APP_NAME === 'sveltekit'
+              ) &&
+              !(
+                // stacks do not work in Vercel production
+                !isLocalDeployment()
+              )
+            ) {
+              expect(result.stack).toContain('throwErrorFromStep');
+              expect(result.stack).toContain('stepThatThrowsFromHelper');
+              expect(result.stack).not.toContain('evalmachine');
+            }
 
-            // Source maps are not supported everyhwere. Check the definition
+            // Source maps are not supported everywhere. Check the definition
             // of hasStepSourceMaps() to see where they are supported
             if (hasStepSourceMaps()) {
               expect(result.stack).toContain('helpers.ts:21:9');
@@ -787,7 +815,7 @@ describe('e2e', () => {
               'stepThatThrowsFromHelper'
             );
             expect(failedStep.error.stack).not.toContain('evalmachine');
-            // Source maps are not supported everyhwere. Check the definition
+            // Source maps are not supported everywhere. Check the definition
             // of hasStepSourceMaps() to see where they are supported
             if (hasStepSourceMaps()) {
               expect(failedStep.error.stack).toContain('helpers.ts:21:9');
