@@ -2,8 +2,22 @@ import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transform } from '@swc/core';
+import { getDecoratorOptionsForDirectory } from './config-helpers.js';
 
 const require = createRequire(import.meta.url);
+
+// Cache decorator options - tsconfig doesn't change during a build
+let cachedDecoratorOptions: Awaited<
+  ReturnType<typeof getDecoratorOptionsForDirectory>
+> | null = null;
+
+async function getDecoratorOptions() {
+  if (cachedDecoratorOptions) {
+    return cachedDecoratorOptions;
+  }
+  cachedDecoratorOptions = await getDecoratorOptionsForDirectory(process.cwd());
+  return cachedDecoratorOptions;
+}
 
 export type WorkflowManifest = {
   steps?: {
@@ -30,6 +44,8 @@ export async function applySwcTransform(
   code: string;
   workflowManifest: WorkflowManifest;
 }> {
+  const decoratorOptions = await getDecoratorOptions();
+
   const swcPluginPath = require.resolve('@workflow/swc-plugin', {
     paths: [dirname(fileURLToPath(import.meta.url))],
   });
@@ -51,12 +67,12 @@ export async function applySwcTransform(
           ? {
               syntax: 'typescript',
               tsx: filename.endsWith('.tsx'),
-              decorators: true,
+              decorators: decoratorOptions.decorators,
             }
           : {
               syntax: 'ecmascript',
               jsx: filename.endsWith('.jsx'),
-              decorators: true,
+              decorators: decoratorOptions.decorators,
             }),
       },
       target: 'es2022',
@@ -69,8 +85,8 @@ export async function applySwcTransform(
         react: {
           runtime: 'preserve',
         },
-        legacyDecorator: true,
-        decoratorMetadata: true,
+        legacyDecorator: decoratorOptions.legacyDecorator,
+        decoratorMetadata: decoratorOptions.decoratorMetadata,
       },
     },
     // TODO: investigate proper source map support as they
