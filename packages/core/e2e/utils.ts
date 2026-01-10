@@ -26,47 +26,29 @@ export function isLocalDeployment(): boolean {
  *       get rid of this strange matrix
  */
 export function hasStepSourceMaps(): boolean {
+  const appName = process.env.APP_NAME as string;
+
+  // Vercel production builds don't support step source maps
+  if (process.env.WORKFLOW_VERCEL_ENV === 'production') {
+    return false;
+  }
+
+  // Local prod builds don't have source maps
+  if (isLocalDeployment() && !process.env.DEV_TEST_CONFIG) {
+    return false;
+  }
+
+  // Windows doesn't support step source maps in local dev
+  if (isLocalDeployment() && process.platform === 'win32') {
+    return false;
+  }
+
+  // vite and astro don't have step source maps in local dev
+  if (process.env.DEV_TEST_CONFIG && ['vite', 'astro'].includes(appName)) {
+    return false;
+  }
+
   return true;
-  // TODO: we need to fix this
-  // const appName = process.env.APP_NAME as string;
-
-  // if (['nextjs-webpack', 'nextjs-turbopack'].includes(appName)) {
-  //   if (isLocalDeployment() && process.platform !== 'win32') {
-  //     return true;
-  //   }
-  //   // Next.js apps on Vercel don't enable source map support by default
-  //   return false;
-  // }
-
-  // // Vercel production builds don't support step source maps
-  // if (process.env.WORKFLOW_VERCEL_ENV === 'production') {
-  //   return false;
-  // }
-
-  // // source mappings are off in local dev with these two
-  // // TODO: we need to find where mapping is dropped
-  // // if (process.env.DEV_TEST_CONFIG && ['sveltekit', 'astro'].includes(appName)) {
-  // //   return false
-  // // }
-
-  // // Vercel preview builds have proper source maps for all other frameworks, EXCEPT sveltekit
-  // if (!isLocalDeployment()) {
-  //   return appName !== 'sveltekit';
-  // }
-
-  // // Vite only works in vercel, not on local prod or dev
-  // if (appName === 'vite') {
-  //   return false;
-  // }
-
-  // // Prod buils for frameworks typically don't consume source maps. So let's disable testing
-  // // in local prod and local postgres tests
-  // if (!process.env.DEV_TEST_CONFIG) {
-  //   return false;
-  // }
-
-  // // Works everywhere else (i.e. other frameworks in dev mode)
-  // return true;
 }
 
 /**
@@ -75,22 +57,14 @@ export function hasStepSourceMaps(): boolean {
  *       get rid of this strange matrix
  */
 export function hasWorkflowSourceMaps(): boolean {
+  const appName = process.env.APP_NAME as string;
+
+  // vite and astro don't have workflow source maps in local dev
+  if (process.env.DEV_TEST_CONFIG && ['vite', 'astro'].includes(appName)) {
+    return false;
+  }
+
   return true;
-  // const appName = process.env.APP_NAME as string;
-
-  // // Vercel deployments have proper source map support for workflow errors
-  // if (!isLocalDeployment()) {
-  //   return true;
-  // }
-
-  // // These frameworks currently don't handle sourcemaps correctly in local dev
-  // // TODO: figure out how to get sourcemaps working in these frameworks too
-  // if (process.env.DEV_TEST_CONFIG && ['vite', 'astro'].includes(appName)) {
-  //   return false;
-  // }
-
-  // // Works everywhere else
-  // return true;
 }
 
 function getCliArgs(): string {
