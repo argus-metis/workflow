@@ -1,6 +1,6 @@
 {
-  "lastUpdated": "2026-01-09T14:29:13.503Z",
-  "commit": "adb93121fc0d4790e949f79eec1c375af207bf13",
+  "lastUpdated": "2026-01-11T17:14:38.242Z",
+  "commit": "44dfafe3fcf0c5aa56beb86f6d428894b22d0b0c",
   "branch": "main",
   "type": "e2e",
   "worlds": {
@@ -14,13 +14,13 @@
       "progress": 97
     },
     "redis": {
-      "status": "partial",
+      "status": "passing",
       "total": 37,
-      "passed": 36,
-      "failed": 1,
+      "passed": 37,
+      "failed": 0,
       "skipped": 0,
       "frameworks": {},
-      "progress": 97
+      "progress": 100
     },
     "starter": {
       "status": "partial",
@@ -161,10 +161,10 @@
       "progress": 98
     },
     "vercel": {
-      "status": "passing",
+      "status": "partial",
       "total": 374,
-      "passed": 363,
-      "failed": 0,
+      "passed": 361,
+      "failed": 2,
       "skipped": 11,
       "frameworks": {
         "astro": {
@@ -214,8 +214,8 @@
         },
         "vite": {
           "total": 34,
-          "passed": 33,
-          "failed": 0
+          "passed": 32,
+          "failed": 1
         }
       },
       "progress": 97
