@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { findUp } from 'find-up';
+import JSON5 from 'json5';
 import type { WorkflowConfig } from './types.js';
 
 export interface DecoratorOptions {
@@ -30,20 +31,8 @@ export async function getDecoratorOptionsFromTsConfig(
 
   try {
     const content = await readFile(tsconfigPath, 'utf-8');
-    let tsconfig: { compilerOptions?: Record<string, unknown> };
-    try {
-      // First try parsing as-is (valid JSON)
-      tsconfig = JSON.parse(content);
-    } catch {
-      // Fallback: strip JSONC-style comments and trailing commas
-      // Note: The simple // regex can incorrectly match // inside strings (like paths),
-      // so we only use it as a fallback when direct parsing fails
-      const jsonContent = content
-        .replace(/\/\*[\s\S]*?\*\//g, '') // Remove /* */ block comments
-        .replace(/^\s*\/\/.*$/gm, '') // Remove // line comments (only at line start with optional whitespace)
-        .replace(/,(\s*[}\]])/g, '$1'); // Remove trailing commas
-      tsconfig = JSON.parse(jsonContent);
-    }
+    const tsconfig: { compilerOptions?: Record<string, unknown> } =
+      JSON5.parse(content);
     const compilerOptions = tsconfig.compilerOptions || {};
 
     // Match Next.js behavior: enable decorators only when experimentalDecorators is true
