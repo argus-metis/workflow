@@ -1,6 +1,9 @@
 .workflow-data
 node_modules
 /packages/*/dist
+
+# Generated worlds manifest data
+packages/utils/src/worlds-manifest-data.generated.ts
 .vercel
 .turbo
 .nuxt

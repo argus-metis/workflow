@@ -43,11 +43,13 @@
     }
   },
   "scripts": {
+    "prebuild": "node scripts/copy-manifest.mjs",
     "build": "tsc",
+    "predev": "node scripts/copy-manifest.mjs",
     "dev": "tsc --watch",
     "clean": "tsc --build --clean && rm -rf dist",
     "test": "vitest run src",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "node scripts/copy-manifest.mjs && tsc --noEmit"
   },
   "devDependencies": {
     "@types/ms": "2.1.0",
