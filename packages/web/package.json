@@ -27,12 +27,12 @@
     "format": "biome format --write"
   },
   "dependencies": {
-    "@xyflow/react": "12.9.3",
-    "next": "16.0.10",
-    "nuqs": "^2.2.5",
-    "shiki": "3.21.0"
+    "next": "16.0.10"
   },
   "devDependencies": {
+    "@xyflow/react": "12.9.3",
+    "shiki": "3.21.0",
+    "nuqs": "^2.2.5",
     "@biomejs/biome": "catalog:",
     "@radix-ui/react-alert-dialog": "1.1.5",
     "@radix-ui/react-checkbox": "1.1.4",
