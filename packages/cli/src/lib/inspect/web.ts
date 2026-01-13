@@ -361,6 +361,7 @@ function envToQueryParams(
   }
 
   // Map relevant flags to query params
+  // Note: These query param names match what the web app's ProjectProvider expects
   const envToQueryParamMappings: Record<string, string> = {
     WORKFLOW_TARGET_WORLD: 'backend',
     WORKFLOW_VERCEL_ENV: 'env',
@@ -370,6 +371,7 @@ function envToQueryParams(
     PORT: 'port',
     WORKFLOW_LOCAL_DATA_DIR: 'dataDir',
     WORKFLOW_MANIFEST_PATH: 'manifestPath',
+    WORKFLOW_PROJECT_DIR: 'projectDir',
   };
 
   for (const [envName, paramName] of Object.entries(envToQueryParamMappings)) {

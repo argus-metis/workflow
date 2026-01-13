@@ -5,6 +5,8 @@ const nextConfig: NextConfig = {
   experimental: {
     serverSourceMaps: false,
   },
+  // Transpile workspace packages
+  transpilePackages: ['@workflow/web-shared', '@workflow/utils', '@workflow/core'],
 };
 
 export default nextConfig;

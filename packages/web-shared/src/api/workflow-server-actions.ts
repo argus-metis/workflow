@@ -13,6 +13,9 @@ import {
   getExternalRevivers,
 } from '@workflow/core/serialization';
 import { WorkflowAPIError, WorkflowRunNotFoundError } from '@workflow/errors';
+import { type Project, isVercelWorld } from '@workflow/utils/project-types';
+import { getWorldById } from '@workflow/utils/worlds-manifest';
+import { validateProject as validateProjectUtil } from '@workflow/utils/project';
 import type {
   Event,
   Hook,
@@ -55,6 +58,59 @@ export type ServerActionResult<T> =
   | { success: false; error: ServerActionError };
 
 /**
+ * Check if the app is running in self-hosting mode.
+ * In self-hosting mode, env vars cannot be passed from the client.
+ */
+function isSelfHostingMode(): boolean {
+  return process.env.WORKFLOW_UI_SELF_HOSTING === '1' ||
+    process.env.WORKFLOW_UI_SELF_HOSTING === 'true';
+}
+
+/**
+ * Server action to get the self-hosting mode state.
+ */
+export async function getSelfHostingMode(): Promise<ServerActionResult<boolean>> {
+  return createResponse(isSelfHostingMode());
+}
+
+/**
+ * Result of project validation from server action.
+ */
+export interface ProjectValidationActionResult {
+  valid: boolean;
+  errors: Array<{
+    field: string;
+    message: string;
+    critical: boolean;
+  }>;
+  worldName?: string;
+}
+
+/**
+ * Server action to validate a project configuration.
+ * This calls the validation logic from @workflow/utils and can perform
+ * server-side checks like verifying file paths exist.
+ */
+export async function validateProjectConfig(
+  project: Project
+): Promise<ServerActionResult<ProjectValidationActionResult>> {
+  try {
+    const result = await validateProjectUtil(project);
+    return createResponse({
+      valid: result.valid,
+      errors: result.errors,
+      worldName: result.world?.name,
+    });
+  } catch (error) {
+    return createServerActionError<ProjectValidationActionResult>(
+      error,
+      'validateProjectConfig',
+      { worldId: project.worldId }
+    );
+  }
+}
+
+/**
  * Cache for World instances keyed by envMap
  *
  * IMPORTANT: This cache works under the assumption that if the UI is used to look at
@@ -62,35 +118,105 @@ export type ServerActionResult<T> =
  * setting them directly on their Next.js instance. If environment variables are set
  * directly on process.env, the cached World may operate with incorrect environment
  * configuration.
+ *
+ * IMPORTANT: Caching is DISABLED for Vercel backend (multi-tenant scenario) because
+ * different users may have different credentials and should not share World instances.
  */
 const worldCache = new Map<string, World>();
 
-function getWorldFromEnv(envMap: EnvMap) {
-  // Generate stable cache key from envMap
-  const sortedKeys = Object.keys(envMap).sort();
-  const sortedEntries = sortedKeys.map((key) => [key, envMap[key]]);
-  const cacheKey = JSON.stringify(Object.fromEntries(sortedEntries));
+/**
+ * Generate a stable cache key based on world-relevant env vars.
+ * Only includes env vars that are relevant for the world (from manifest).
+ */
+function getWorldCacheKey(envMap: EnvMap): string | null {
+  const targetWorld = envMap.WORKFLOW_TARGET_WORLD || 'local';
 
-  // Check if we have a cached World for this configuration
-  // Note: This returns the cached World without re-setting process.env.
-  // See comment above worldCache for important usage assumptions.
-  const cachedWorld = worldCache.get(cacheKey);
-  if (cachedWorld) {
-    return cachedWorld;
+  // Never cache for Vercel backend (multi-tenant)
+  if (isVercelWorld(targetWorld)) {
+    return null;
   }
 
-  // No cached World found, create a new one
+  // Determine the world ID from the target world
+  let worldId = targetWorld;
+  if (targetWorld === '@workflow/world-local') worldId = 'local';
+  else if (targetWorld === '@workflow/world-postgres') worldId = 'postgres';
+  else if (targetWorld.includes('/')) {
+    // For package names, try to find the world by package
+    const world = getWorldById(worldId);
+    if (!world) {
+      // Unknown world - use all env vars
+      const sortedEntries = Object.entries(envMap)
+        .filter(([_, v]) => v !== undefined && v !== '')
+        .sort(([a], [b]) => a.localeCompare(b));
+      return JSON.stringify(Object.fromEntries(sortedEntries));
+    }
+  }
+
+  // Get relevant env vars for this world
+  const world = getWorldById(worldId);
+  if (!world) {
+    // Unknown world - use all env vars for cache key
+    const sortedEntries = Object.entries(envMap)
+      .filter(([_, v]) => v !== undefined && v !== '')
+      .sort(([a], [b]) => a.localeCompare(b));
+    return JSON.stringify(Object.fromEntries(sortedEntries));
+  }
+
+  // Use only relevant env vars (required + optional) for cache key
+  const relevantVars = [...world.requiredEnv, ...world.optionalEnv, 'WORKFLOW_TARGET_WORLD'];
+  const relevantEnv: Record<string, string> = {};
+  for (const key of relevantVars) {
+    if (envMap[key]) {
+      relevantEnv[key] = envMap[key]!;
+    }
+  }
+
+  return JSON.stringify(relevantEnv);
+}
+
+/**
+ * Apply environment variables to process.env if not in self-hosting mode.
+ * In self-hosting mode, client-provided env vars are ignored for security.
+ */
+function applyEnvVars(envMap: EnvMap): void {
+  // In self-hosting mode, never apply client-provided env vars
+  if (isSelfHostingMode()) {
+    return;
+  }
+
   for (const [key, value] of Object.entries(envMap)) {
     if (value === undefined || value === null || value === '') {
       continue;
     }
     process.env[key] = value;
   }
+}
 
+function getWorldFromEnv(envMap: EnvMap) {
+  // In self-hosting mode, ignore client env vars entirely
+  const effectiveEnvMap = isSelfHostingMode() ? {} : envMap;
+
+  // Generate cache key (may be null for Vercel backend)
+  const cacheKey = getWorldCacheKey(effectiveEnvMap);
+
+  // Check cache if we have a valid cache key
+  if (cacheKey !== null) {
+    const cachedWorld = worldCache.get(cacheKey);
+    if (cachedWorld) {
+      return cachedWorld;
+    }
+  }
+
+  // Apply env vars (no-op in self-hosting mode)
+  applyEnvVars(effectiveEnvMap);
+
+  // Create new world
   const world = createWorld();
 
-  // Cache the newly created World
-  worldCache.set(cacheKey, world);
+  // Cache the world if we have a valid cache key
+  if (cacheKey !== null) {
+    worldCache.set(cacheKey, world);
+  }
 
   return world;
 }

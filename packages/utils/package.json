@@ -28,6 +28,18 @@
     "./check-data-dir": {
       "types": "./dist/check-data-dir.d.ts",
       "default": "./dist/check-data-dir.js"
+    },
+    "./worlds-manifest": {
+      "types": "./dist/worlds-manifest.d.ts",
+      "default": "./dist/worlds-manifest.js"
+    },
+    "./project": {
+      "types": "./dist/project.d.ts",
+      "default": "./dist/project.js"
+    },
+    "./project-types": {
+      "types": "./dist/project-types.d.ts",
+      "default": "./dist/project-types.js"
     }
   },
   "scripts": {

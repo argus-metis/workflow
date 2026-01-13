@@ -8,7 +8,13 @@
       "description": "Filesystem-based world for local development and testing",
       "docs": "/docs/deploying/world/local-world",
       "env": {},
-      "services": []
+      "services": [],
+      "requiredEnv": [],
+      "optionalEnv": [
+        "WORKFLOW_LOCAL_DATA_DIR",
+        "PORT",
+        "WORKFLOW_MANIFEST_PATH"
+      ]
     },
     {
       "id": "postgres",
@@ -39,7 +45,13 @@
           }
         }
       ],
-      "setup": "./packages/world-postgres/bin/setup.js"
+      "setup": "./packages/world-postgres/bin/setup.js",
+      "requiredEnv": [
+        "WORKFLOW_POSTGRES_URL"
+      ],
+      "optionalEnv": [
+        "PORT"
+      ]
     },
     {
       "id": "vercel",
@@ -52,7 +64,16 @@
         "WORKFLOW_VERCEL_ENV": "production"
       },
       "services": [],
-      "requiresDeployment": true
+      "requiresDeployment": true,
+      "requiredEnv": [
+        "WORKFLOW_VERCEL_AUTH_TOKEN",
+        "WORKFLOW_VERCEL_PROJECT",
+        "WORKFLOW_VERCEL_TEAM"
+      ],
+      "optionalEnv": [
+        "WORKFLOW_VERCEL_ENV",
+        "WORKFLOW_VERCEL_BACKEND_URL"
+      ]
     },
     {
       "id": "starter",
@@ -65,7 +86,9 @@
       "env": {
         "WORKFLOW_TARGET_WORLD": "@workflow-worlds/starter"
       },
-      "services": []
+      "services": [],
+      "requiredEnv": [],
+      "optionalEnv": []
     },
     {
       "id": "turso",
@@ -80,7 +103,13 @@
         "WORKFLOW_TURSO_DATABASE_URL": "file:workflow.db"
       },
       "services": [],
-      "setup": "pnpm exec workflow-turso-setup"
+      "setup": "pnpm exec workflow-turso-setup",
+      "requiredEnv": [
+        "WORKFLOW_TURSO_DATABASE_URL"
+      ],
+      "optionalEnv": [
+        "WORKFLOW_TURSO_AUTH_TOKEN"
+      ]
     },
     {
       "id": "mongodb",
@@ -107,7 +136,12 @@
             "retries": 5
           }
         }
-      ]
+      ],
+      "requiredEnv": [
+        "WORKFLOW_MONGODB_URI",
+        "WORKFLOW_MONGODB_DATABASE_NAME"
+      ],
+      "optionalEnv": []
     },
     {
       "id": "redis",
@@ -133,7 +167,11 @@
             "retries": 5
           }
         }
-      ]
+      ],
+      "requiredEnv": [
+        "WORKFLOW_REDIS_URI"
+      ],
+      "optionalEnv": []
     },
     {
       "id": "jazz",
@@ -148,7 +186,13 @@
       },
       "services": [],
       "requiresCredentials": true,
-      "credentialsNote": "Requires JAZZ_API_KEY, JAZZ_WORKER_ACCOUNT, and JAZZ_WORKER_SECRET from Jazz Cloud"
+      "credentialsNote": "Requires JAZZ_API_KEY, JAZZ_WORKER_ACCOUNT, and JAZZ_WORKER_SECRET from Jazz Cloud",
+      "requiredEnv": [
+        "JAZZ_API_KEY",
+        "JAZZ_WORKER_ACCOUNT",
+        "JAZZ_WORKER_SECRET"
+      ],
+      "optionalEnv": []
     }
   ]
 }

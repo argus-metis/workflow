@@ -46,6 +46,7 @@ export const getEnvVars = (): Record<string, string> => {
     PORT: env.PORT || '',
     WORKFLOW_LOCAL_DATA_DIR: env.WORKFLOW_LOCAL_DATA_DIR || '',
     WORKFLOW_MANIFEST_PATH: env.WORKFLOW_MANIFEST_PATH || '',
+    WORKFLOW_PROJECT_DIR: env.WORKFLOW_PROJECT_DIR || '',
   };
 };
 
@@ -86,6 +87,13 @@ export const inferLocalWorldEnvVars = async () => {
       'PORT environment variable is not set, using default port 3000'
     );
     envVars.PORT = '3000';
+    writeEnvVars(envVars);
+  }
+
+  // Always set the project directory to the current working directory
+  // This helps the web UI associate this configuration with the source folder
+  if (!envVars.WORKFLOW_PROJECT_DIR) {
+    envVars.WORKFLOW_PROJECT_DIR = cwd;
     writeEnvVars(envVars);
   }
 
