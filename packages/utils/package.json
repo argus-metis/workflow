@@ -28,12 +28,27 @@
     "./check-data-dir": {
       "types": "./dist/check-data-dir.d.ts",
       "default": "./dist/check-data-dir.js"
+    },
+    "./project": {
+      "types": "./dist/project.d.ts",
+      "default": "./dist/project.js"
+    },
+    "./worlds-manifest": {
+      "types": "./dist/worlds-manifest.d.ts",
+      "default": "./dist/worlds-manifest.js"
+    },
+    "./env-var-names": {
+      "types": "./dist/env-var-names.d.ts",
+      "default": "./dist/env-var-names.js"
     }
   },
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "clean": "tsc --build --clean && rm -rf dist",
+    "prebuild": "cp ../../worlds-manifest.json ./src/worlds-manifest.json",
+    "build": "pnpm prebuild && tsc && cp ./src/worlds-manifest.json ./dist/worlds-manifest.json",
+    "predev": "cp ../../worlds-manifest.json ./src/worlds-manifest.json",
+    "dev": "pnpm predev && tsc --watch",
+    "postdev": "cp ./src/worlds-manifest.json ./dist/worlds-manifest.json",
+    "clean": "tsc --build --clean && rm -rf dist && rm -f src/worlds-manifest.json",
     "test": "vitest run src",
     "typecheck": "tsc --noEmit"
   },

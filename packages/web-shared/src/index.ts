@@ -6,6 +6,13 @@ export type { Event, Hook, Step, WorkflowRun } from '@workflow/world';
 
 export * from './api/workflow-api-client';
 export type { EnvMap } from './api/workflow-server-actions';
+
+// Re-export project types from utils for convenience
+export type {
+  Project,
+  ProjectValidationError,
+  ProjectValidationResult,
+} from '@workflow/utils';
 export { ErrorBoundary } from './error-boundary';
 export type {
   HookActionCallbacks,

@@ -1,6 +1,7 @@
 'use client';
 
 import { TooltipProvider } from '@radix-ui/react-tooltip';
+import { Info } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ThemeProvider, useTheme } from 'next-themes';
@@ -8,25 +9,53 @@ import { useEffect, useRef } from 'react';
 import { ConnectionStatus } from '@/components/display-utils/connection-status';
 import { SettingsDropdown } from '@/components/settings-dropdown';
 import { Toaster } from '@/components/ui/sonner';
-import { buildUrlWithConfig, useQueryParamConfig } from '@/lib/config';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { ProjectProvider, useProject } from '@/lib/project-context';
 import { Logo } from '../icons/logo';
 
 interface LayoutClientProps {
   children: React.ReactNode;
 }
 
+/**
+ * Self-hosting indicator shown in the bottom-right corner.
+ */
+function SelfHostingIndicator() {
+  return (
+    <div className="fixed bottom-4 right-4 z-50">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="p-2 rounded-full bg-muted/80 backdrop-blur-sm border shadow-sm cursor-help">
+            <Info className="h-4 w-4 text-muted-foreground" />
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="left" className="max-w-xs">
+          <p className="text-sm">
+            This app is running in self-hosted mode. Environment configuration
+            is managed server-side and cannot be modified from the UI.
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
+
 function LayoutContent({ children }: LayoutClientProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const config = useQueryParamConfig();
   const { setTheme } = useTheme();
+  const { isSelfHosting, isInitializing } = useProject();
 
-  const id = searchParams.get('id');
   const runId = searchParams.get('runId');
   const stepId = searchParams.get('stepId');
   const hookId = searchParams.get('hookId');
   const resource = searchParams.get('resource');
+  const id = searchParams.get('id');
   const themeParam = searchParams.get('theme');
 
   // Track if we've already handled the initial navigation
@@ -47,6 +76,9 @@ function LayoutContent({ children }: LayoutClientProps) {
   // If initialized with a resource/id or direct ID params, we navigate to the appropriate page
   // Only run this logic once on mount or when we're on the root path with special params
   useEffect(() => {
+    // Wait for initialization
+    if (isInitializing) return;
+
     // Skip if we're not on the root path and we've already navigated
     if (pathname !== '/' && hasNavigatedRef.current) {
       return;
@@ -65,19 +97,13 @@ function LayoutContent({ children }: LayoutClientProps) {
         let targetUrl: string;
         if (stepId) {
           // Open run with step sidebar
-          targetUrl = buildUrlWithConfig(`/run/${runId}`, config, {
-            sidebar: 'step',
-            stepId,
-          });
+          targetUrl = `/run/${runId}?sidebar=step&stepId=${stepId}`;
         } else if (hookId) {
           // Open run with hook sidebar
-          targetUrl = buildUrlWithConfig(`/run/${runId}`, config, {
-            sidebar: 'hook',
-            hookId,
-          });
+          targetUrl = `/run/${runId}?sidebar=hook&hookId=${hookId}`;
         } else {
           // Just open the run
-          targetUrl = buildUrlWithConfig(`/run/${runId}`, config);
+          targetUrl = `/run/${runId}`;
         }
         hasNavigatedRef.current = true;
         router.push(targetUrl);
@@ -94,33 +120,18 @@ function LayoutContent({ children }: LayoutClientProps) {
 
     let targetUrl: string;
     if (resource === 'run') {
-      targetUrl = buildUrlWithConfig(`/run/${id}`, config);
+      targetUrl = `/run/${id}`;
     } else if (resource === 'step' && runId) {
-      targetUrl = buildUrlWithConfig(`/run/${runId}`, config, {
-        sidebar: 'step',
-        stepId: id,
-      });
+      targetUrl = `/run/${runId}?sidebar=step&stepId=${id}`;
     } else if (resource === 'stream' && runId) {
-      targetUrl = buildUrlWithConfig(`/run/${runId}`, config, {
-        sidebar: 'stream',
-        streamId: id,
-      });
+      targetUrl = `/run/${runId}?sidebar=stream&streamId=${id}`;
     } else if (resource === 'event' && runId) {
-      targetUrl = buildUrlWithConfig(`/run/${runId}`, config, {
-        sidebar: 'event',
-        eventId: id,
-      });
+      targetUrl = `/run/${runId}?sidebar=event&eventId=${id}`;
     } else if (resource === 'hook' && runId) {
-      targetUrl = buildUrlWithConfig(`/run/${runId}`, config, {
-        sidebar: 'hook',
-        hookId: id,
-      });
+      targetUrl = `/run/${runId}?sidebar=hook&hookId=${id}`;
     } else if (resource === 'hook' && !runId) {
       // Hook without runId - go to home page with hook sidebar
-      targetUrl = buildUrlWithConfig('/', config, {
-        sidebar: 'hook',
-        hookId: id,
-      });
+      targetUrl = `/?sidebar=hook&hookId=${id}`;
     } else {
       console.warn(`Can't deep-link to ${resource} ${id}.`);
       return;
@@ -128,7 +139,21 @@ function LayoutContent({ children }: LayoutClientProps) {
 
     hasNavigatedRef.current = true;
     router.push(targetUrl);
-  }, [resource, id, runId, stepId, hookId, router, config, pathname]);
+  }, [resource, id, runId, stepId, hookId, router, pathname, isInitializing]);
+
+  // In self-hosting mode, hide the header entirely
+  if (isSelfHosting) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <TooltipProvider delayDuration={0}>
+          {/* Scrollable Content - no header */}
+          <div className="flex-1 px-6 pt-6">{children}</div>
+          <SelfHostingIndicator />
+        </TooltipProvider>
+        <Toaster />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -136,7 +161,7 @@ function LayoutContent({ children }: LayoutClientProps) {
         {/* Sticky Header */}
         <div className="sticky top-0 z-50 bg-background border-b px-6 py-4">
           <div className="flex items-center justify-between w-full">
-            <Link href={buildUrlWithConfig('/', config)}>
+            <Link href="/">
               <h1
                 className="flex items-center gap-2"
                 title="Workflow Observability"
@@ -145,7 +170,7 @@ function LayoutContent({ children }: LayoutClientProps) {
               </h1>
             </Link>
             <div className="ml-auto flex items-center gap-2">
-              <ConnectionStatus config={config} />
+              <ConnectionStatus />
               <SettingsDropdown />
             </div>
           </div>
@@ -168,7 +193,9 @@ export function LayoutClient({ children }: LayoutClientProps) {
       disableTransitionOnChange
       storageKey="workflow-theme"
     >
-      <LayoutContent>{children}</LayoutContent>
+      <ProjectProvider>
+        <LayoutContent>{children}</LayoutContent>
+      </ProjectProvider>
     </ThemeProvider>
   );
 }

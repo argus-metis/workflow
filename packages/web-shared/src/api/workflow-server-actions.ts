@@ -13,6 +13,13 @@ import {
   getExternalRevivers,
 } from '@workflow/core/serialization';
 import { WorkflowAPIError, WorkflowRunNotFoundError } from '@workflow/errors';
+import {
+  filterEnvMapForWorld,
+  isVercelWorld,
+  validateProject,
+  type Project,
+  type ProjectValidationResult,
+} from '@workflow/utils';
 import type {
   Event,
   Hook,
@@ -55,6 +62,26 @@ export type ServerActionResult<T> =
   | { success: false; error: ServerActionError };
 
 /**
+ * Check if the app is running in self-hosting mode.
+ * In self-hosting mode, env vars are configured server-side and cannot be modified by clients.
+ */
+export function isSelfHostingMode(): boolean {
+  return (
+    process.env.WORKFLOW_UI_SELF_HOSTING === '1' ||
+    process.env.WORKFLOW_UI_SELF_HOSTING === 'true'
+  );
+}
+
+/**
+ * Server action to check if the app is in self-hosting mode.
+ */
+export async function checkSelfHostingMode(): Promise<
+  ServerActionResult<boolean>
+> {
+  return { success: true, data: isSelfHostingMode() };
+}
+
+/**
  * Cache for World instances keyed by envMap
  *
  * IMPORTANT: This cache works under the assumption that if the UI is used to look at
@@ -62,25 +89,73 @@ export type ServerActionResult<T> =
  * setting them directly on their Next.js instance. If environment variables are set
  * directly on process.env, the cached World may operate with incorrect environment
  * configuration.
+ *
+ * NOTE: Caching is disabled for Vercel worlds (multi-tenant scenario) to prevent
+ * cross-tenant data leakage. For Vercel, each request creates a fresh World instance.
  */
 const worldCache = new Map<string, World>();
 
+/**
+ * Determine the world ID from an envMap.
+ * Uses WORKFLOW_TARGET_WORLD if set, otherwise defaults to 'local'.
+ */
+function getWorldIdFromEnvMap(envMap: EnvMap): string {
+  const targetWorld = envMap.WORKFLOW_TARGET_WORLD;
+  if (!targetWorld) return 'local';
+  // Map common backend names to world IDs
+  if (targetWorld === '@workflow/world-local' || targetWorld === 'local')
+    return 'local';
+  if (targetWorld === '@workflow/world-vercel' || targetWorld === 'vercel')
+    return 'vercel';
+  if (targetWorld === '@workflow/world-postgres' || targetWorld === 'postgres')
+    return 'postgres';
+  return targetWorld;
+}
+
+/**
+ * Resolve the effective envMap, handling self-hosting mode.
+ * In self-hosting mode, client-provided envMap is ignored.
+ */
+function resolveEnvMap(clientEnvMap: EnvMap): EnvMap {
+  if (isSelfHostingMode()) {
+    // In self-hosting mode, only use server-side environment variables
+    // Client-provided envMap is ignored for security
+    return {};
+  }
+  return clientEnvMap;
+}
+
 function getWorldFromEnv(envMap: EnvMap) {
-  // Generate stable cache key from envMap
-  const sortedKeys = Object.keys(envMap).sort();
-  const sortedEntries = sortedKeys.map((key) => [key, envMap[key]]);
+  // Resolve effective envMap (handles self-hosting mode)
+  const effectiveEnvMap = resolveEnvMap(envMap);
+
+  // Determine the world ID for caching decisions
+  const worldId = getWorldIdFromEnvMap(effectiveEnvMap);
+
+  // Filter envMap to only include relevant variables for caching
+  const relevantEnvMap = filterEnvMapForWorld(worldId, effectiveEnvMap);
+
+  // Generate stable cache key from relevant envMap entries only
+  const sortedKeys = Object.keys(relevantEnvMap).sort();
+  const sortedEntries = sortedKeys.map((key) => [key, relevantEnvMap[key]]);
   const cacheKey = JSON.stringify(Object.fromEntries(sortedEntries));
 
-  // Check if we have a cached World for this configuration
-  // Note: This returns the cached World without re-setting process.env.
-  // See comment above worldCache for important usage assumptions.
-  const cachedWorld = worldCache.get(cacheKey);
-  if (cachedWorld) {
-    return cachedWorld;
+  // Skip caching for Vercel worlds (multi-tenant scenario)
+  // This prevents cross-tenant data leakage
+  const shouldCache = !isVercelWorld(worldId);
+
+  if (shouldCache) {
+    // Check if we have a cached World for this configuration
+    // Note: This returns the cached World without re-setting process.env.
+    // See comment above worldCache for important usage assumptions.
+    const cachedWorld = worldCache.get(cacheKey);
+    if (cachedWorld) {
+      return cachedWorld;
+    }
   }
 
-  // No cached World found, create a new one
-  for (const [key, value] of Object.entries(envMap)) {
+  // Set environment variables from the effective envMap
+  for (const [key, value] of Object.entries(effectiveEnvMap)) {
     if (value === undefined || value === null || value === '') {
       continue;
     }
@@ -89,8 +164,10 @@ function getWorldFromEnv(envMap: EnvMap) {
 
   const world = createWorld();
 
-  // Cache the newly created World
-  worldCache.set(cacheKey, world);
+  // Cache the newly created World (only for non-Vercel worlds)
+  if (shouldCache) {
+    worldCache.set(cacheKey, world);
+  }
 
   return world;
 }
@@ -820,4 +897,56 @@ export async function fetchWorkflowsManifest(
     steps: {},
     workflows: {},
   });
+}
+
+/**
+ * Validate a project configuration.
+ *
+ * This server action validates a project's configuration by checking:
+ * 1. Required environment variables are set
+ * 2. World-specific validation (e.g., data directory exists for local world)
+ *
+ * In self-hosting mode, this validates the server-side configuration.
+ */
+export async function validateProjectConfig(
+  project: Project
+): Promise<ServerActionResult<ProjectValidationResult>> {
+  try {
+    // In self-hosting mode, we validate the server-side configuration
+    // The client-provided project is used for structure but env vars come from server
+    if (isSelfHostingMode()) {
+      // Create a project using server-side environment variables
+      const serverProject: Project = {
+        ...project,
+        envMap: {
+          WORKFLOW_TARGET_WORLD: process.env.WORKFLOW_TARGET_WORLD,
+          WORKFLOW_LOCAL_DATA_DIR: process.env.WORKFLOW_LOCAL_DATA_DIR,
+          PORT: process.env.PORT,
+          WORKFLOW_MANIFEST_PATH: process.env.WORKFLOW_MANIFEST_PATH,
+          WORKFLOW_VERCEL_AUTH_TOKEN: process.env.WORKFLOW_VERCEL_AUTH_TOKEN,
+          WORKFLOW_VERCEL_PROJECT: process.env.WORKFLOW_VERCEL_PROJECT,
+          WORKFLOW_VERCEL_TEAM: process.env.WORKFLOW_VERCEL_TEAM,
+          WORKFLOW_VERCEL_ENV: process.env.WORKFLOW_VERCEL_ENV,
+          WORKFLOW_POSTGRES_URL: process.env.WORKFLOW_POSTGRES_URL,
+        },
+        worldId: process.env.WORKFLOW_TARGET_WORLD || 'local',
+      };
+
+      const result = await validateProject(serverProject, {
+        skipConnectionCheck: false,
+      });
+      return createResponse(result);
+    }
+
+    const result = await validateProject(project, {
+      skipConnectionCheck: false,
+    });
+    return createResponse(result);
+  } catch (error) {
+    return createServerActionError<ProjectValidationResult>(
+      error,
+      'validateProjectConfig',
+      { projectId: project.id }
+    );
+  }
 }

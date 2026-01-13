@@ -45,14 +45,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { worldConfigToEnvMap } from '@/lib/config';
-import type { WorldConfig } from '@/lib/config-world';
+import { useProject } from '@/lib/project-context';
 import { CopyableText } from './display-utils/copyable-text';
 import { RelativeTime } from './display-utils/relative-time';
 import { TableSkeleton } from './display-utils/table-skeleton';
 
 interface HooksTableProps {
-  config: WorldConfig;
   runId?: string;
   onHookClick: (hookId: string, runId?: string) => void;
   selectedHookId?: string;
@@ -70,15 +68,15 @@ interface InvocationData {
  * Fetches invocation counts in the background for each hook.
  */
 export function HooksTable({
-  config,
   runId,
   onHookClick,
   selectedHookId,
 }: HooksTableProps) {
+  const { getEnvMap } = useProject();
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(
     () => new Date()
   );
-  const env = useMemo(() => worldConfigToEnvMap(config), [config]);
+  const env = useMemo(() => getEnvMap(), [getEnvMap]);
 
   const {
     data,

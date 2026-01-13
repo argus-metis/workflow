@@ -1,6 +1,11 @@
 'use client';
 
 import { parseWorkflowName } from '@workflow/core/parse-name';
+import { isLocalWorld } from '@workflow/utils';
+import {
+  findWorkflowDataDir,
+  type WorkflowDataDirInfo,
+} from '@workflow/utils/check-data-dir';
 import {
   cancelRun,
   type EnvMap,
@@ -20,12 +25,15 @@ import {
   Loader2,
   MoreHorizontal,
   RefreshCw,
+  Settings2,
   XCircle,
   Zap,
 } from 'lucide-react';
+import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import useSWR from 'swr';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -54,10 +62,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { worldConfigToEnvMap } from '@/lib/config';
-import type { WorldConfig } from '@/lib/config-world';
-import { useDataDirInfo } from '@/lib/hooks';
 import { useTableSelection } from '@/lib/hooks/use-table-selection';
+import { useProject } from '@/lib/project-context';
 import { CopyableText } from './display-utils/copyable-text';
 import { RelativeTime } from './display-utils/relative-time';
 import { SelectionBar } from './display-utils/selection-bar';
@@ -160,8 +166,33 @@ function LazyDropdownMenu({
 }
 
 interface RunsTableProps {
-  config: WorldConfig;
   onRunClick: (runId: string) => void;
+}
+
+/**
+ * Banner shown when configuration is invalid and no runs are found.
+ */
+function ConfigWarningBanner() {
+  return (
+    <Alert className="mb-4 border-amber-500/50 bg-amber-500/10">
+      <AlertCircle className="h-4 w-4 text-amber-600" />
+      <AlertTitle className="text-amber-700 dark:text-amber-400">
+        Configuration Issue Detected
+      </AlertTitle>
+      <AlertDescription className="text-amber-600 dark:text-amber-300">
+        <p className="mb-2">
+          Your project configuration appears to be invalid or the workflow data
+          directory cannot be accessed. This may be why no runs are showing.
+        </p>
+        <Link href="/settings">
+          <Button variant="outline" size="sm" className="gap-2">
+            <Settings2 className="h-4 w-4" />
+            Configure Project
+          </Button>
+        </Link>
+      </AlertDescription>
+    </Alert>
+  );
 }
 
 const statusMap: Record<WorkflowRunStatus, { label: string; color: string }> = {
@@ -359,7 +390,9 @@ function FilterControls({
  * Uses the PaginatingTable pattern: fetches data for each page as needed from the server.
  * The table and fetching behavior are intertwined - pagination controls trigger new API calls.
  */
-export function RunsTable({ config, onRunClick }: RunsTableProps) {
+export function RunsTable({ onRunClick }: RunsTableProps) {
+  const { currentProject, getEnvMap, validationResult, isValidating } =
+    useProject();
   const searchParams = useSearchParams();
   const handleWorkflowFilter = useWorkflowFilter();
   const handleStatusFilter = useStatusFilter();
@@ -377,15 +410,31 @@ export function RunsTable({ config, onRunClick }: RunsTableProps) {
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(
     () => new Date()
   );
-  const env = useMemo(() => worldConfigToEnvMap(config), [config]);
-  const isLocal = config.backend === 'local' || !config.backend;
-  const { data: dataDirInfo, isLoading: dataDirInfoLoading } = useDataDirInfo(
-    config.dataDir
-  );
+  const env = useMemo(() => getEnvMap(), [getEnvMap]);
+  const isLocal = isLocalWorld(currentProject?.worldId);
+
+  // Fetch data dir info for local world
+  const { data: dataDirInfo, isLoading: dataDirInfoLoading } =
+    useSWR<WorkflowDataDirInfo | null>(
+      isLocal && currentProject
+        ? `data-dir-info:${currentProject.envMap.WORKFLOW_LOCAL_DATA_DIR || currentProject.projectDir}`
+        : null,
+      async () => {
+        if (!currentProject) return null;
+        const dataDir =
+          currentProject.envMap.WORKFLOW_LOCAL_DATA_DIR ||
+          currentProject.projectDir;
+        return findWorkflowDataDir(dataDir);
+      },
+      { revalidateOnFocus: false }
+    );
+
+  // Determine if config is invalid
+  const isConfigInvalid = validationResult && !validationResult.valid;
 
   // TODO: World-vercel doesn't support filtering by status without a workflow name filter
   const statusFilterRequiresWorkflowNameFilter =
-    config.backend?.includes('vercel') || false;
+    currentProject?.worldId === 'vercel' || false;
   // TODO: This is a workaround. We should be getting a list of valid workflow names
   // from the manifest.
   const [seenWorkflowNames, setSeenWorkflowNames] = useState<Set<string>>(
@@ -572,8 +621,13 @@ export function RunsTable({ config, onRunClick }: RunsTableProps) {
     </code>
   );
 
+  // Show config warning if invalid AND (no data OR has error)
+  const showConfigWarning =
+    isConfigInvalid && (!data.data || data.data.length === 0 || error);
+
   return (
     <div>
+      {showConfigWarning && <ConfigWarningBanner />}
       <FilterControls
         workflowNameFilter={workflowNameFilter}
         status={status}

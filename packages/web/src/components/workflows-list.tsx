@@ -22,30 +22,26 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import type { WorldConfig } from '@/lib/config-world';
 import { useWorkflowGraphManifest } from '@/lib/flow-graph/use-workflow-graph';
 import type { WorkflowGraph } from '@/lib/flow-graph/workflow-graph-types';
+import { useProject } from '@/lib/project-context';
 import { TableSkeleton } from './display-utils/table-skeleton';
 
 interface WorkflowsListProps {
-  config: WorldConfig;
   onWorkflowSelect?: (workflowName: string) => void;
 }
 
-export function WorkflowsList({
-  config,
-  onWorkflowSelect,
-}: WorkflowsListProps) {
+export function WorkflowsList({ onWorkflowSelect }: WorkflowsListProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selectedWorkflow, setSelectedWorkflow] =
     useState<WorkflowGraph | null>(null);
 
-  // Fetch workflow graph manifest
+  // Fetch workflow graph manifest (uses project context internally)
   const {
     manifest: graphManifest,
     loading,
     error: graphError,
-  } = useWorkflowGraphManifest(config);
+  } = useWorkflowGraphManifest();
 
   const workflows = graphManifest ? Object.values(graphManifest.workflows) : [];
 

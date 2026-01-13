@@ -370,6 +370,7 @@ function envToQueryParams(
     PORT: 'port',
     WORKFLOW_LOCAL_DATA_DIR: 'dataDir',
     WORKFLOW_MANIFEST_PATH: 'manifestPath',
+    WORKFLOW_POSTGRES_URL: 'postgresUrl',
   };
 
   for (const [envName, paramName] of Object.entries(envToQueryParamMappings)) {
@@ -378,6 +379,13 @@ function envToQueryParams(
       params.set(paramName, String(value));
     }
   }
+
+  // Always pass the current working directory as projectDir
+  // This ensures the web UI knows where the CLI was invoked from
+  // Important: Use the actual cwd, not the dataDir, so the UI can associate
+  // the project with the source folder
+  params.set('projectDir', process.cwd());
+
   // We only take the runId/stepId/hookId flags directly, the rest are set via env vars,
   // which are internally already influenced by the CLI flags
   for (const flagName of ['runId', 'stepId', 'hookId'] as const) {

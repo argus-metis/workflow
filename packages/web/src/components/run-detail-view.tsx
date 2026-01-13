@@ -1,6 +1,7 @@
 'use client';
 
 import { parseWorkflowName } from '@workflow/core/parse-name';
+import { isLocalWorld } from '@workflow/utils';
 import {
   cancelRun,
   ErrorBoundary,
@@ -50,10 +51,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { buildUrlWithConfig, worldConfigToEnvMap } from '@/lib/config';
-import type { WorldConfig } from '@/lib/config-world';
 import { mapRunToExecution } from '@/lib/flow-graph/graph-execution-mapper';
 import { useWorkflowGraphManifest } from '@/lib/flow-graph/use-workflow-graph';
+import { useProject } from '@/lib/project-context';
 
 import { CopyableText } from './display-utils/copyable-text';
 import { LiveStatus } from './display-utils/live-status';
@@ -68,24 +68,22 @@ import { Skeleton } from './ui/skeleton';
  * This ensures the manifest is only fetched when the Graph tab is mounted
  */
 function GraphTabContent({
-  config,
   run,
   allSteps,
   allEvents,
   env,
 }: {
-  config: WorldConfig;
   run: WorkflowRun;
   allSteps: Step[] | null;
   allEvents: Event[] | null;
   env: EnvMap;
 }) {
-  // Fetch workflow graph manifest only when this tab is mounted
+  // Fetch workflow graph manifest only when this tab is mounted (uses project context internally)
   const {
     manifest: graphManifest,
     loading: graphLoading,
     error: graphError,
-  } = useWorkflowGraphManifest(config);
+  } = useWorkflowGraphManifest();
 
   // Find the workflow graph for this run
   const workflowGraph = useMemo(() => {
@@ -153,24 +151,23 @@ function GraphTabContent({
 }
 
 interface RunDetailViewProps {
-  config: WorldConfig;
   runId: string;
   selectedId?: string;
 }
 
 export function RunDetailView({
-  config,
   runId,
   // TODO: This should open the right sidebar within the trace viewer
   selectedId: _selectedId,
 }: RunDetailViewProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { currentProject, getEnvMap } = useProject();
   const [cancelling, setCancelling] = useState(false);
   const [rerunning, setRerunning] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [showRerunDialog, setShowRerunDialog] = useState(false);
-  const env = useMemo(() => worldConfigToEnvMap(config), [config]);
+  const env = useMemo(() => getEnvMap(), [getEnvMap]);
 
   // Read tab and streamId from URL search params
   const activeTab =
@@ -221,7 +218,7 @@ export function RunDetailView({
   );
 
   // Only show graph tab for local backend
-  const isLocalBackend = config.backend === 'local';
+  const isLocalBackend = isLocalWorld(currentProject?.worldId);
 
   // Fetch all run data with live updates
   const {
@@ -284,7 +281,7 @@ export function RunDetailView({
         description: `Run ID: ${newRunId}`,
       });
       // Navigate to the new run
-      router.push(buildUrlWithConfig(`/run/${newRunId}`, config));
+      router.push(`/run/${newRunId}`);
     } catch (err) {
       console.error('Failed to re-run workflow:', err);
       toast.error('Failed to start new run', {
@@ -364,7 +361,7 @@ export function RunDetailView({
             <BreadcrumbList>
               <BreadcrumbItem>
                 <BreadcrumbLink asChild>
-                  <Link href={buildUrlWithConfig('/', config)}>Runs</Link>
+                  <Link href="/">Runs</Link>
                 </BreadcrumbLink>
               </BreadcrumbItem>
               <BreadcrumbSeparator />
@@ -665,7 +662,6 @@ export function RunDetailView({
                 >
                   <div className="h-full min-h-[500px]">
                     <GraphTabContent
-                      config={config}
                       run={run}
                       allSteps={allSteps}
                       allEvents={allEvents}
