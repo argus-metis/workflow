@@ -24,7 +24,7 @@ const getConnectionInfo = (
     if (config.project) parts.push(`project: ${config.project}`);
     if (config.team) parts.push(`team: ${config.team}`);
 
-    return { provider: 'Vercel', parts };
+    return { provider: 'Connected to Vercel', parts };
   }
 
   if (backend === 'local') {
@@ -35,10 +35,15 @@ const getConnectionInfo = (
     }
     if (config.port) parts.push(`port: ${config.port}`);
 
-    return { provider: 'Local', parts };
+    return { provider: 'Local Dev', parts };
   }
 
-  return { provider: config.backend || 'unknown', parts: [] };
+  return {
+    provider: config.backend
+      ? `Connected to ${config.backend}`
+      : 'Unknown connection',
+    parts: [],
+  };
 };
 
 export function ConnectionStatus({ config }: ConnectionStatusProps) {
@@ -54,7 +59,7 @@ export function ConnectionStatus({ config }: ConnectionStatusProps) {
   return (
     <div className="text-sm text-muted-foreground flex items-center gap-2">
       <span className="font-medium">
-        Connected to: {provider} {subString ? `(${subString})` : ''}
+        {provider} {subString ? `(${subString})` : ''}
       </span>
       <Tooltip>
         <TooltipTrigger asChild>
