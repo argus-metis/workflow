@@ -59,7 +59,10 @@ export function createQueue(config?: APIConfig): Queue {
   const headers = getHeaders(config);
   const queueClient = new Client({
     baseUrl: usingProxy ? baseUrl : undefined,
-    basePath: usingProxy ? '/queues/v3/topic' : undefined,
+    // The proxy will strip `/queues` from the path, and add `/api` in front,
+    // so this ends up being `/api/v3` when arriving at the queue server,
+    // which is the same as the default basePath in VQS client.
+    basePath: usingProxy ? '/queues/v3' : undefined,
     token: usingProxy ? config?.token : undefined,
     headers: Object.fromEntries(headers.entries()),
   });
