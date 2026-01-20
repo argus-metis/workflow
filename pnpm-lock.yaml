@@ -46,7 +46,7 @@ catalogs:
 overrides:
   rfc6902: 5.1.2
   devalue: 5.6.0
-  '@vercel/queue': file:vercel-queue-0.0.0-alpha.33.tgz
+  '@vercel/queue': file:vercel-queue-0.0.0-alpha.34.tgz
 
 importers:
 
@@ -1147,8 +1147,8 @@ importers:
   packages/world-local:
     dependencies:
       '@vercel/queue':
-        specifier: file:../../vercel-queue-0.0.0-alpha.33.tgz
-        version: file:vercel-queue-0.0.0-alpha.33.tgz
+        specifier: file:../../vercel-queue-0.0.0-alpha.34.tgz
+        version: file:vercel-queue-0.0.0-alpha.34.tgz
       '@workflow/errors':
         specifier: workspace:*
         version: link:../errors
@@ -1193,8 +1193,8 @@ importers:
   packages/world-postgres:
     dependencies:
       '@vercel/queue':
-        specifier: file:../../vercel-queue-0.0.0-alpha.33.tgz
-        version: file:vercel-queue-0.0.0-alpha.33.tgz
+        specifier: file:../../vercel-queue-0.0.0-alpha.34.tgz
+        version: file:vercel-queue-0.0.0-alpha.34.tgz
       '@workflow/errors':
         specifier: workspace:*
         version: link:../errors
@@ -1291,8 +1291,8 @@ importers:
         specifier: 'catalog:'
         version: 3.0.5
       '@vercel/queue':
-        specifier: file:../../vercel-queue-0.0.0-alpha.33.tgz
-        version: file:vercel-queue-0.0.0-alpha.33.tgz
+        specifier: file:../../vercel-queue-0.0.0-alpha.34.tgz
+        version: file:vercel-queue-0.0.0-alpha.34.tgz
       '@workflow/errors':
         specifier: workspace:*
         version: link:../errors
@@ -6778,8 +6778,8 @@ packages:
       '@opentelemetry/sdk-metrics': '>=1.19.0 <2.0.0'
       '@opentelemetry/sdk-trace-base': '>=1.19.0 <2.0.0'
 
-  '@vercel/queue@file:vercel-queue-0.0.0-alpha.33.tgz':
-    resolution: {integrity: sha512-oBFVIN1WO3D6vRKi28kkluvg9VKDvf2bRtFhwjRpy7cBt7oRVsBQnx/i8i2ouMvFs1A3O7tD3F+0sgmanm3+nA==, tarball: file:vercel-queue-0.0.0-alpha.33.tgz}
+  '@vercel/queue@file:vercel-queue-0.0.0-alpha.34.tgz':
+    resolution: {integrity: sha512-LqlOtMgnxiz0P0XOM4gWDhw0c4h8tSae3Hm2vWP13B7At/x4HjUqAA2aA/X15SH6njhLWXj3M0+RTODwFpSSFA==, tarball: file:vercel-queue-0.0.0-alpha.34.tgz}
     version: 0.0.0-alpha.33
     engines: {node: '>=20.0.0'}
     hasBin: true
@@ -19504,7 +19504,7 @@ snapshots:
       '@opentelemetry/sdk-metrics': 1.30.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-base': 1.30.1(@opentelemetry/api@1.9.0)
 
-  '@vercel/queue@file:vercel-queue-0.0.0-alpha.33.tgz':
+  '@vercel/queue@file:vercel-queue-0.0.0-alpha.34.tgz':
     dependencies:
       '@vercel/oidc': 3.0.5
       mixpart: 0.0.4
