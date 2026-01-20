@@ -229,17 +229,32 @@ const getClassColors = (
 };
 
 /**
+ * Extracts the file path from a classId
+ */
+const getFilePathFromClassId = (classId: string): string => {
+  // classId format: class//path/to/file.ts//ClassName
+  const match = classId.match(/^class\/\/(.+)\/\/[^/]+$/);
+  return match?.[1] ?? classId;
+};
+
+/**
  * Renders a ClassInstanceRef as a styled card showing the class name and serialized data.
  * The header color is determined by hashing the classId for visual distinction.
  * Reacts to theme changes for proper dark/light mode support.
+ *
+ * @param showFilePath - When true, displays the file path to disambiguate from other
+ *                       classes with the same name but different source files.
  */
 const ClassInstanceRefDisplay = ({
   classInstanceRef,
+  showFilePath,
 }: {
   classInstanceRef: ClassInstanceRef;
+  showFilePath: boolean;
 }) => {
   const isDark = useDarkMode();
   const colors = getClassColors(classInstanceRef.classId, isDark);
+  const filePath = getFilePathFromClassId(classInstanceRef.classId);
 
   return (
     <div
@@ -273,7 +288,17 @@ const ClassInstanceRefDisplay = ({
           <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
           <line x1="12" y1="22.08" x2="12" y2="12" />
         </svg>
-        <span className="font-semibold">{classInstanceRef.className}</span>
+        <span className="font-semibold">
+          {classInstanceRef.className}
+          {showFilePath && (
+            <span
+              className="font-normal opacity-70 cursor-help"
+              title={filePath}
+            >
+              @{filePath}
+            </span>
+          )}
+        </span>
       </div>
       <pre
         className="px-2 py-1.5 overflow-x-auto whitespace-pre-wrap"
@@ -401,6 +426,27 @@ const JsonBlock = (value: unknown) => {
     );
   }
 
+  // Compute which class instance refs need disambiguation
+  // (when multiple refs share the same className but have different classIds)
+  const classIdsNeedingDisambiguation = new Set<string>();
+  const refsByClassName = new Map<string, ClassInstanceRef[]>();
+
+  for (const ref of classInstanceRefs.values()) {
+    const existing = refsByClassName.get(ref.className) ?? [];
+    existing.push(ref);
+    refsByClassName.set(ref.className, existing);
+  }
+
+  for (const refsWithSameName of refsByClassName.values()) {
+    const uniqueClassIds = new Set(refsWithSameName.map((r) => r.classId));
+    if (uniqueClassIds.size > 1) {
+      // Mark all classIds with this className as needing disambiguation
+      for (const ref of refsWithSameName) {
+        classIdsNeedingDisambiguation.add(ref.classId);
+      }
+    }
+  }
+
   // Build a combined map of all placeholders to their React elements
   const placeholderComponents = new Map<string, ReactNode>();
   let keyIndex = 0;
@@ -418,6 +464,9 @@ const JsonBlock = (value: unknown) => {
       <ClassInstanceRefDisplay
         key={keyIndex++}
         classInstanceRef={classInstanceRef}
+        showFilePath={classIdsNeedingDisambiguation.has(
+          classInstanceRef.classId
+        )}
       />
     );
   }

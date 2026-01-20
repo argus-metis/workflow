@@ -46,6 +46,12 @@ export const CLASS_INSTANCE_REF_TYPE = '__workflow_class_instance_ref__';
 export class ClassInstanceRef {
   readonly __type = CLASS_INSTANCE_REF_TYPE;
 
+  /**
+   * When true, the filename will be shown to disambiguate from other classes
+   * with the same name. This is set by `markClassInstanceDisambiguation()`.
+   */
+  needsDisambiguation = false;
+
   constructor(
     public readonly className: string,
     public readonly classId: string,
@@ -54,23 +60,26 @@ export class ClassInstanceRef {
 
   /**
    * Custom inspect for Node.js util.inspect (used by console.log, CLI, etc.)
-   * Renders as: ClassName@filename { ...data }
-   * The @filename portion is styled gray (like undefined in Node.js)
+   * Renders as: ClassName { ...data } or ClassName@filepath { ...data }
+   * The @filepath portion (when shown) is styled gray (like undefined in Node.js)
    */
   [inspect.custom](
     _depth: number,
     options: import('node:util').InspectOptionsStylized
   ): string {
     const dataStr = inspect(this.data, { ...options, depth: options.depth });
+
+    if (!this.needsDisambiguation) {
+      return `${this.className} ${dataStr}`;
+    }
+
     const parsed = parseClassName(this.classId);
     const filePath = parsed?.path ?? this.classId;
-    // Extract just the filename from the path
-    const fileName = filePath.split('/').pop() ?? filePath;
-    // Style the @filename portion gray using the 'undefined' style
-    const styledFileName = options.stylize
-      ? options.stylize(`@${fileName}`, 'undefined')
-      : `@${fileName}`;
-    return `${this.className}${styledFileName} ${dataStr}`;
+    // Style the @filepath portion gray using the 'undefined' style
+    const styledFilePath = options.stylize
+      ? options.stylize(`@${filePath}`, 'undefined')
+      : `@${filePath}`;
+    return `${this.className}${styledFilePath} ${dataStr}`;
   }
 
   /**
@@ -81,12 +90,14 @@ export class ClassInstanceRef {
     className: string;
     classId: string;
     data: unknown;
+    needsDisambiguation: boolean;
   } {
     return {
       __type: this.__type,
       className: this.className,
       classId: this.classId,
       data: this.data,
+      needsDisambiguation: this.needsDisambiguation,
     };
   }
 }
@@ -106,6 +117,64 @@ export const isClassInstanceRef = (
       'className' in value &&
       typeof value.className === 'string')
   );
+};
+
+/**
+ * Recursively collects all ClassInstanceRef objects from a data structure
+ */
+const collectClassInstanceRefs = (value: unknown): ClassInstanceRef[] => {
+  const refs: ClassInstanceRef[] = [];
+
+  const traverse = (v: unknown): void => {
+    if (v instanceof ClassInstanceRef) {
+      refs.push(v);
+      // Also traverse the data inside
+      traverse(v.data);
+    } else if (Array.isArray(v)) {
+      for (const item of v) {
+        traverse(item);
+      }
+    } else if (v !== null && typeof v === 'object') {
+      for (const val of Object.values(v)) {
+        traverse(val);
+      }
+    }
+  };
+
+  traverse(value);
+  return refs;
+};
+
+/**
+ * Analyzes a data structure and marks ClassInstanceRef objects that need
+ * disambiguation (when multiple classes share the same className but have
+ * different classIds).
+ *
+ * Call this after hydrating data to enable smart filename display.
+ */
+export const markClassInstanceDisambiguation = (data: unknown): void => {
+  const refs = collectClassInstanceRefs(data);
+
+  // Group refs by className
+  const byClassName = new Map<string, ClassInstanceRef[]>();
+  for (const ref of refs) {
+    const existing = byClassName.get(ref.className) ?? [];
+    existing.push(ref);
+    byClassName.set(ref.className, existing);
+  }
+
+  // Mark refs that need disambiguation
+  for (const refsWithSameName of byClassName.values()) {
+    // Get unique classIds for this className
+    const uniqueClassIds = new Set(refsWithSameName.map((r) => r.classId));
+
+    // If there are multiple different classIds, mark all refs as needing disambiguation
+    if (uniqueClassIds.size > 1) {
+      for (const ref of refsWithSameName) {
+        ref.needsDisambiguation = true;
+      }
+    }
+  }
 };
 
 /**

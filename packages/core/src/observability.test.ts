@@ -10,6 +10,7 @@ import {
   isClassInstanceRef,
   isStreamId,
   isStreamRef,
+  markClassInstanceDisambiguation,
   STREAM_REF_TYPE,
   truncateId,
 } from './observability.js';
@@ -66,6 +67,7 @@ describe('ClassInstanceRef', () => {
         className: 'Point',
         classId: 'class//file.ts//Point',
         data: { x: 1, y: 2 },
+        needsDisambiguation: false,
       });
     });
 
@@ -83,12 +85,29 @@ describe('ClassInstanceRef', () => {
         className: 'Point',
         classId: 'class//file.ts//Point',
         data: { x: 1, y: 2 },
+        needsDisambiguation: false,
+      });
+    });
+
+    it('should include needsDisambiguation when true', () => {
+      const ref = new ClassInstanceRef('Point', 'class//file.ts//Point', {
+        x: 1,
+        y: 2,
+      });
+      ref.needsDisambiguation = true;
+
+      expect(ref.toJSON()).toEqual({
+        __type: CLASS_INSTANCE_REF_TYPE,
+        className: 'Point',
+        classId: 'class//file.ts//Point',
+        data: { x: 1, y: 2 },
+        needsDisambiguation: true,
       });
     });
   });
 
   describe('[inspect.custom]', () => {
-    it('should render as ClassName@filename { data }', () => {
+    it('should render as ClassName { data } by default (no disambiguation)', () => {
       const ref = new ClassInstanceRef(
         'Point',
         'class//workflows/user-signup.ts//Point',
@@ -96,18 +115,34 @@ describe('ClassInstanceRef', () => {
       );
 
       const output = inspect(ref, { colors: false });
-      expect(output).toBe('Point@user-signup.ts { x: 1, y: 2 }');
+      // By default, needsDisambiguation is false, so filename is not shown
+      expect(output).toBe('Point { x: 1, y: 2 }');
     });
 
-    it('should handle nested file paths', () => {
+    it('should render as ClassName@filepath { data } when disambiguation is needed', () => {
+      const ref = new ClassInstanceRef(
+        'Point',
+        'class//workflows/user-signup.ts//Point',
+        { x: 1, y: 2 }
+      );
+      ref.needsDisambiguation = true;
+
+      const output = inspect(ref, { colors: false });
+      expect(output).toBe('Point@workflows/user-signup.ts { x: 1, y: 2 }');
+    });
+
+    it('should handle nested file paths with disambiguation', () => {
       const ref = new ClassInstanceRef(
         'Config',
         'class//lib/models/config.ts//Config',
         { nested: { a: 1, b: 2 } }
       );
+      ref.needsDisambiguation = true;
 
       const output = inspect(ref, { colors: false });
-      expect(output).toBe('Config@config.ts { nested: { a: 1, b: 2 } }');
+      expect(output).toBe(
+        'Config@lib/models/config.ts { nested: { a: 1, b: 2 } }'
+      );
     });
 
     it('should handle string data', () => {
@@ -118,7 +153,7 @@ describe('ClassInstanceRef', () => {
       );
 
       const output = inspect(ref, { colors: false });
-      expect(output).toBe("Token@token.ts 'secret'");
+      expect(output).toBe("Token 'secret'");
     });
 
     it('should handle null data', () => {
@@ -129,7 +164,7 @@ describe('ClassInstanceRef', () => {
       );
 
       const output = inspect(ref, { colors: false });
-      expect(output).toBe('Empty@empty.ts null');
+      expect(output).toBe('Empty null');
     });
 
     it('should handle array data', () => {
@@ -140,33 +175,35 @@ describe('ClassInstanceRef', () => {
       );
 
       const output = inspect(ref, { colors: false });
-      expect(output).toBe('List@list.ts [ 1, 2, 3 ]');
+      expect(output).toBe('List [ 1, 2, 3 ]');
     });
 
-    it('should handle simple classId format gracefully', () => {
+    it('should handle simple classId format gracefully with disambiguation', () => {
       // Fallback for non-standard classId format
       const ref = new ClassInstanceRef('Point', 'test//TestPoint', {
         x: 1,
         y: 2,
       });
+      ref.needsDisambiguation = true;
 
       const output = inspect(ref, { colors: false });
-      // Falls back to extracting just the last segment as filename
-      expect(output).toBe('Point@TestPoint { x: 1, y: 2 }');
+      // Falls back to using the full classId as filepath
+      expect(output).toBe('Point@test//TestPoint { x: 1, y: 2 }');
     });
 
-    it('should style @filename gray when colors are enabled', () => {
+    it('should style @filepath gray when colors are enabled and disambiguation is needed', () => {
       const ref = new ClassInstanceRef(
         'Point',
         'class//workflows/point.ts//Point',
         { x: 1, y: 2 }
       );
+      ref.needsDisambiguation = true;
 
       const output = inspect(ref, { colors: true });
-      // When colors are enabled, the @filename should have ANSI escape codes
+      // When colors are enabled, the @filepath should have ANSI escape codes
       expect(output).toContain('Point');
-      // Check for ANSI escape codes (gray/dim styling for @filename)
-      expect(output).toMatch(/\x1b\[90m@point\.ts\x1b\[39m/);
+      // Check for ANSI escape codes (gray/dim styling for @filepath)
+      expect(output).toMatch(/\x1b\[90m@workflows\/point\.ts\x1b\[39m/);
       // Data is also present (may have color codes for numbers)
       expect(output).toContain('x:');
       expect(output).toContain('y:');
@@ -365,5 +402,147 @@ describe('hydrateResourceIO with custom class instances', () => {
     expect(parsed.className).toBe('Point');
     expect(parsed.classId).toBe('class//Point');
     expect(parsed.data).toEqual({ x: 1, y: 2 });
+  });
+});
+
+describe('markClassInstanceDisambiguation', () => {
+  it('should not mark refs when all classNames are unique', () => {
+    const pointRef = new ClassInstanceRef(
+      'Point',
+      'class//geo/point.ts//Point',
+      { x: 1, y: 2 }
+    );
+    const configRef = new ClassInstanceRef(
+      'Config',
+      'class//lib/config.ts//Config',
+      { enabled: true }
+    );
+
+    const data = { point: pointRef, config: configRef };
+    markClassInstanceDisambiguation(data);
+
+    expect(pointRef.needsDisambiguation).toBe(false);
+    expect(configRef.needsDisambiguation).toBe(false);
+  });
+
+  it('should mark refs when same className has different classIds', () => {
+    const point1 = new ClassInstanceRef(
+      'Point',
+      'class//geo/2d/point.ts//Point',
+      { x: 1, y: 2 }
+    );
+    const point2 = new ClassInstanceRef(
+      'Point',
+      'class//geo/3d/point.ts//Point',
+      { x: 1, y: 2, z: 3 }
+    );
+
+    const data = { point2d: point1, point3d: point2 };
+    markClassInstanceDisambiguation(data);
+
+    expect(point1.needsDisambiguation).toBe(true);
+    expect(point2.needsDisambiguation).toBe(true);
+  });
+
+  it('should not mark refs when same className has same classId', () => {
+    const point1 = new ClassInstanceRef('Point', 'class//geo/point.ts//Point', {
+      x: 1,
+      y: 2,
+    });
+    const point2 = new ClassInstanceRef('Point', 'class//geo/point.ts//Point', {
+      x: 3,
+      y: 4,
+    });
+
+    const data = { a: point1, b: point2 };
+    markClassInstanceDisambiguation(data);
+
+    // Same classId, no disambiguation needed
+    expect(point1.needsDisambiguation).toBe(false);
+    expect(point2.needsDisambiguation).toBe(false);
+  });
+
+  it('should handle nested data structures', () => {
+    const point1 = new ClassInstanceRef('Point', 'class//geo/2d.ts//Point', {
+      x: 1,
+      y: 2,
+    });
+    const point2 = new ClassInstanceRef('Point', 'class//geo/3d.ts//Point', {
+      x: 1,
+      y: 2,
+      z: 3,
+    });
+
+    const data = {
+      level1: {
+        level2: {
+          point: point1,
+        },
+      },
+      array: [point2],
+    };
+    markClassInstanceDisambiguation(data);
+
+    expect(point1.needsDisambiguation).toBe(true);
+    expect(point2.needsDisambiguation).toBe(true);
+  });
+
+  it('should handle arrays', () => {
+    const vec1 = new ClassInstanceRef(
+      'Vector',
+      'class//math/v1.ts//Vector',
+      [1, 2]
+    );
+    const vec2 = new ClassInstanceRef(
+      'Vector',
+      'class//math/v2.ts//Vector',
+      [1, 2, 3]
+    );
+    const other = new ClassInstanceRef(
+      'Config',
+      'class//lib/config.ts//Config',
+      {}
+    );
+
+    const data = [vec1, vec2, other];
+    markClassInstanceDisambiguation(data);
+
+    expect(vec1.needsDisambiguation).toBe(true);
+    expect(vec2.needsDisambiguation).toBe(true);
+    expect(other.needsDisambiguation).toBe(false);
+  });
+
+  it('should handle nested ClassInstanceRef data', () => {
+    // A ClassInstanceRef can contain another ClassInstanceRef in its data
+    const inner = new ClassInstanceRef('Inner', 'class//a.ts//Inner', {});
+    const outer = new ClassInstanceRef('Outer', 'class//b.ts//Outer', {
+      child: inner,
+    });
+
+    const data = { outer };
+    markClassInstanceDisambiguation(data);
+
+    // Both have unique classNames, no disambiguation
+    expect(inner.needsDisambiguation).toBe(false);
+    expect(outer.needsDisambiguation).toBe(false);
+  });
+
+  it('should handle conflicting classNames in nested ClassInstanceRef data', () => {
+    const inner1 = new ClassInstanceRef('Point', 'class//a.ts//Point', {
+      x: 1,
+    });
+    const inner2 = new ClassInstanceRef('Point', 'class//b.ts//Point', {
+      x: 2,
+    });
+    const outer = new ClassInstanceRef('Container', 'class//c.ts//Container', {
+      point: inner1,
+    });
+
+    const data = { outer, point: inner2 };
+    markClassInstanceDisambiguation(data);
+
+    expect(inner1.needsDisambiguation).toBe(true);
+    expect(inner2.needsDisambiguation).toBe(true);
+    expect(outer.needsDisambiguation).toBe(false);
   });
 });
