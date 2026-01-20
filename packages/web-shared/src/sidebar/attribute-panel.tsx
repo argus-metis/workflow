@@ -7,6 +7,7 @@ import {
 } from '@workflow/utils/parse-name';
 import type { Event, Hook, Step, WorkflowRun } from '@workflow/world';
 import type { ModelMessage } from 'ai';
+import ColorHash from 'color-hash';
 import type { ReactNode } from 'react';
 import { createContext, useContext, useMemo, useState } from 'react';
 import { ErrorCard } from '../components/ui/error-card';
@@ -186,8 +187,6 @@ const isClassInstanceRef = (value: unknown): value is ClassInstanceRef => {
     typeof value.className === 'string'
   );
 };
-
-import ColorHash from 'color-hash';
 
 /**
  * Color hash instance configured for nice saturation and lightness.
