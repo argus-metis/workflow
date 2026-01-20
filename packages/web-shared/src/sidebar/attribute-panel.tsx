@@ -1,6 +1,10 @@
 'use client';
 
-import { parseStepName, parseWorkflowName } from '@workflow/utils/parse-name';
+import {
+  parseClassName,
+  parseStepName,
+  parseWorkflowName,
+} from '@workflow/utils/parse-name';
 import type { Event, Hook, Step, WorkflowRun } from '@workflow/world';
 import type { ModelMessage } from 'ai';
 import type { ReactNode } from 'react';
@@ -229,15 +233,6 @@ const getClassColors = (
 };
 
 /**
- * Extracts the file path from a classId
- */
-const getFilePathFromClassId = (classId: string): string => {
-  // classId format: class//path/to/file.ts//ClassName
-  const match = classId.match(/^class\/\/(.+)\/\/[^/]+$/);
-  return match?.[1] ?? classId;
-};
-
-/**
  * Renders a ClassInstanceRef as a styled card showing the class name and serialized data.
  * The header color is determined by hashing the classId for visual distinction.
  * Reacts to theme changes for proper dark/light mode support.
@@ -254,7 +249,8 @@ const ClassInstanceRefDisplay = ({
 }) => {
   const isDark = useDarkMode();
   const colors = getClassColors(classInstanceRef.classId, isDark);
-  const filePath = getFilePathFromClassId(classInstanceRef.classId);
+  const parsed = parseClassName(classInstanceRef.classId);
+  const filePath = parsed?.path ?? classInstanceRef.classId;
 
   return (
     <div
@@ -270,7 +266,7 @@ const ClassInstanceRefDisplay = ({
           backgroundColor: colors.header,
           color: '#FFFFFF',
         }}
-        title={`Custom class: ${classInstanceRef.classId}`}
+        title={filePath}
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
