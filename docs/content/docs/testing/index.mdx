@@ -1,0 +1,96 @@
+---
+title: Testing
+description: How to test workflows with Vitest
+---
+
+Testing workflows requires a running server to execute the workflow runtime. The recommended approach uses Vitest with a Nitro dev server started via `globalSetup`.
+
+## Setup
+
+### 1. Configure Vitest
+
+Create a `vitest.config.ts` that uses the `workflow/vite` plugin and sets the local world URL:
+
+```ts title="vitest.config.ts"
+import { workflow } from 'workflow/vite';
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  plugins: [workflow()],
+  test: {
+    include: ['test/**/*.test.ts'],
+    testTimeout: 30000,
+    globalSetup: './vitest.setup.ts',
+    env: {
+      WORKFLOW_LOCAL_BASE_URL: 'http://localhost:3000',
+    },
+  },
+});
+```
+
+### 2. Create Global Setup
+
+The setup file starts a Nitro dev server before tests run:
+
+```ts title="vitest.setup.ts"
+import { spawn } from 'node:child_process';
+import { setTimeout } from 'node:timers/promises';
+
+let server;
+
+export async function setup() {
+  server = spawn('npx', ['nitro', 'dev', '--port', '3000'], {
+    stdio: 'pipe',
+    cwd: process.cwd(),
+  });
+
+  // Wait for server to be ready
+  await setTimeout(4000);
+}
+
+export async function teardown() {
+  server?.kill('SIGTERM');
+}
+```
+
+### 3. Configure Nitro
+
+```ts title="nitro.config.ts"
+import { defineNitroConfig } from 'nitro/config';
+
+export default defineNitroConfig({
+  modules: ['workflow/nitro'],
+  compatibilityDate: '2024-01-01',
+});
+```
+
+## Writing Tests
+
+Tests can use `start()` to invoke workflows and await `run.returnValue` for the result:
+
+```ts title="test/workflow.test.ts"
+import { describe, expect, it } from 'vitest';
+import { start } from 'workflow/api';
+import { myWorkflow } from '../workflows/my-workflow.js';
+
+describe('workflow tests', () => {
+  it('should execute workflow and return result', async () => {
+    const run = await start(myWorkflow, [arg1, arg2]);
+
+    expect(run.runId).toMatch(/^wrun_/);
+
+    const result = await run.returnValue;
+    expect(result).toEqual(expectedValue);
+  });
+});
+```
+
+## Example
+
+See the complete working example in the repository:
+
+- [vitest.config.ts](https://github.com/vercel/workflow/blob/main/workbench/vitest/vitest.config.ts)
+- [vitest.setup.ts](https://github.com/vercel/workflow/blob/main/workbench/vitest/vitest.setup.ts)
+- [nitro.config.ts](https://github.com/vercel/workflow/blob/main/workbench/vitest/nitro.config.ts)
+- [Example test](https://github.com/vercel/workflow/blob/main/workbench/vitest/test/workflow.test.ts)
+- [Example workflow](https://github.com/vercel/workflow/blob/main/workbench/vitest/workflows/simple.ts)
