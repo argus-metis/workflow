@@ -1,24 +1,41 @@
 import { describe, expect, it } from 'vitest';
-import { calculateWorkflow, greetWorkflow } from '../workflows/simple.js';
+import { add, calculateWorkflow, multiply } from '../workflows/simple.js';
 
-describe('workflow plugin', () => {
-  describe('calculateWorkflow', () => {
-    it('should be defined after transformation', () => {
-      expect(calculateWorkflow).toBeDefined();
+describe('workflow plugin transformation', () => {
+  describe('step functions', () => {
+    it('add() should compute the sum of two numbers', async () => {
+      const result = await add(3, 5);
+      expect(result).toBe(8);
     });
 
-    it('should be a function', () => {
-      expect(typeof calculateWorkflow).toBe('function');
+    it('add() should handle negative numbers', async () => {
+      const result = await add(-10, 5);
+      expect(result).toBe(-5);
+    });
+
+    it('multiply() should compute the product of two numbers', async () => {
+      const result = await multiply(4, 7);
+      expect(result).toBe(28);
+    });
+
+    it('multiply() should handle zero', async () => {
+      const result = await multiply(100, 0);
+      expect(result).toBe(0);
     });
   });
 
-  describe('greetWorkflow', () => {
-    it('should be defined after transformation', () => {
-      expect(greetWorkflow).toBeDefined();
+  describe('workflow functions', () => {
+    it('calculateWorkflow should have workflowId property attached', () => {
+      expect(calculateWorkflow).toHaveProperty('workflowId');
+      expect(
+        typeof (calculateWorkflow as { workflowId?: string }).workflowId
+      ).toBe('string');
     });
 
-    it('should be a function', () => {
-      expect(typeof greetWorkflow).toBe('function');
+    it('calculateWorkflow should throw when called directly', async () => {
+      await expect(calculateWorkflow(3, 5)).rejects.toThrow(
+        /You attempted to execute workflow calculateWorkflow/
+      );
     });
   });
 });
