@@ -1,6 +1,6 @@
 {
-  "lastUpdated": "2026-01-21T02:50:28.296Z",
-  "commit": "3856ce8c20abcc63d224b5cdd63fee0a790c9577",
+  "lastUpdated": "2026-01-21T09:17:57.741Z",
+  "commit": "202c524723932fc5342d33f4b57d26c25c7f9e64",
   "branch": "main",
   "type": "e2e",
   "worlds": {
@@ -161,10 +161,10 @@
       "progress": 94
     },
     "vercel": {
-      "status": "passing",
+      "status": "partial",
       "total": 473,
-      "passed": 435,
-      "failed": 0,
+      "passed": 434,
+      "failed": 1,
       "skipped": 38,
       "frameworks": {
         "astro": {
@@ -189,8 +189,8 @@
         },
         "nextjs-turbopack": {
           "total": 43,
-          "passed": 42,
-          "failed": 0
+          "passed": 41,
+          "failed": 1
         },
         "nextjs-webpack": {
           "total": 43,
