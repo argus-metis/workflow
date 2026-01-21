@@ -1,6 +1,6 @@
-# Generated workflow bundles
-.well-known/
+# Nitro build output
+.nitro/
+.output/
 
-# Test data directories
+# Test data
 .workflow-data/
-.workflow-test-data-*/

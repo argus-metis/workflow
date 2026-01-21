@@ -5,20 +5,12 @@
   "version": "0.0.1",
   "license": "Apache-2.0",
   "scripts": {
-    "build": "wf build",
-    "test": "pnpm build && vitest run",
-    "test:watch": "vitest"
+    "test": "vitest run"
   },
   "devDependencies": {
-    "@hono/node-server": "1.19.5",
     "@types/node": "catalog:",
-    "@workflow/cli": "workspace:*",
-    "@workflow/rollup": "workspace:*",
-    "@workflow/world-local": "workspace:*",
-    "hono": "4.9.10",
-    "vitest": "catalog:"
-  },
-  "dependencies": {
+    "nitro": "catalog:",
+    "vitest": "catalog:",
     "workflow": "workspace:*"
   }
 }
