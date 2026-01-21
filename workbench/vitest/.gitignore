@@ -1,0 +1,6 @@
+# Generated workflow bundles
+.well-known/
+
+# Test data directories
+.workflow-data/
+.workflow-test-data-*/
