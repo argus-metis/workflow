@@ -1,8 +1,8 @@
-import { workflowPlugin } from '@workflow/vitest';
+import { workflowTransformPlugin } from '@workflow/rollup';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  plugins: [workflowPlugin()],
+  plugins: [workflowTransformPlugin()],
   test: {
     include: ['test/**/*.test.ts'],
   },

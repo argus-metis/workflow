@@ -13,8 +13,9 @@ The tests in this workbench show how to:
 ## How It Works
 
 1. **Build Phase**: `wf build` compiles workflows into executable bundles in `.well-known/workflow/v1/`
-2. **Test Server**: A minimal Hono server loads these bundles and provides the workflow runtime
-3. **Tests**: Use `start(workflow, args)` to invoke workflows and assert on the return values
+2. **Vitest Plugin**: Uses `@workflow/rollup` transform plugin to enable importing workflow files in tests
+3. **Test Server**: A minimal Hono server loads the compiled bundles and provides the workflow runtime
+4. **Tests**: Use `start(workflow, args)` to invoke workflows and assert on the return values
 
 ## Usage
 
@@ -27,6 +28,7 @@ pnpm test
 
 ```ts
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
+import { hydrateWorkflowReturnValue } from 'workflow/internal/serialization';
 import { calculateWorkflow } from '../workflows/simple.js';
 import { startTestServer, type TestServer } from '../src/server.js';
 
@@ -44,9 +46,11 @@ describe('workflow with start()', () => {
   it('should run calculateWorkflow', async () => {
     const { runId } = await server.invoke(calculateWorkflow, [2, 7]);
     const result = await server.waitForCompletion(runId);
-    
+
+    const output = await hydrateWorkflowReturnValue(result.output, [], runId);
+
     expect(result.status).toBe('completed');
-    expect(result.output).toEqual({
+    expect(output).toEqual({
       sum: 9,
       product: 14,
       combined: 23,
@@ -65,7 +69,7 @@ workbench/vitest/
 │   └── server.ts       # Test server setup
 ├── test/
 │   └── workflow.test.ts # Tests using start()
-├── vitest.config.ts    # Vitest config with workflow plugin
+├── vitest.config.ts    # Vitest config with @workflow/rollup plugin
 └── package.json
 ```
 
