@@ -172,6 +172,30 @@ jobs:
         env:
           APP_NAME: "nextjs-turbopack"
 
+  vitest-plugin:
+    name: Vitest Plugin Tests
+    runs-on: ubuntu-latest
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        uses: ./.github/actions/setup-workflow-dev
+        with:
+          setup-rust: 'true'
+          install-args: '--ignore-scripts'
+          build-packages: 'false'
+
+      - name: Build packages
+        run: pnpm turbo run build --filter='!./workbench/*'
+
+      - name: Run Vitest Plugin Tests
+        run: pnpm test
+        working-directory: workbench/vitest
+
   e2e-vercel-prod:
     name: E2E Vercel Prod Tests (${{ matrix.app.name }})
     runs-on: ubuntu-latest

@@ -22,6 +22,7 @@
     "@workflow/example-nuxt",
     "@workflow/example-vite",
     "@workflow/example-sveltekit",
-    "@workflow/example-astro"
+    "@workflow/example-astro",
+    "@workflow/vitest-workbench"
   ]
 }
