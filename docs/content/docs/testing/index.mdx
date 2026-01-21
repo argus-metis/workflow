@@ -68,21 +68,21 @@ export default defineNitroConfig({
 
 Tests can use `start()` to invoke workflows and await `run.returnValue` for the result:
 
-{/* @skip-typecheck: incomplete code sample */}
+{/* @skip-typecheck: incomplete code sample with placeholder workflow */}
 
 ```ts title="test/workflow.test.ts"
 import { describe, expect, it } from 'vitest';
 import { start } from 'workflow/api';
-import { myWorkflow } from '../workflows/my-workflow.js';
+import { calculateWorkflow } from '../workflows/simple.js';
 
 describe('workflow tests', () => {
   it('should execute workflow and return result', async () => {
-    const run = await start(myWorkflow, [arg1, arg2]);
+    const run = await start(calculateWorkflow, [2, 7]);
 
     expect(run.runId).toMatch(/^wrun_/);
 
     const result = await run.returnValue;
-    expect(result).toEqual(expectedValue);
+    expect(result).toEqual({ sum: 9, product: 14, combined: 23 });
   });
 });
 ```
