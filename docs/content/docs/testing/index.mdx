@@ -68,6 +68,8 @@ export default defineNitroConfig({
 
 Tests can use `start()` to invoke workflows and await `run.returnValue` for the result:
 
+{/* @skip-typecheck: incomplete code sample */}
+
 ```ts title="test/workflow.test.ts"
 import { describe, expect, it } from 'vitest';
 import { start } from 'workflow/api';
