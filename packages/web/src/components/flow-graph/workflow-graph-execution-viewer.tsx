@@ -19,6 +19,7 @@ import '@xyflow/react/dist/style.css';
 import { GitBranch, Loader2, X } from 'lucide-react';
 import './workflow-graph-viewer.css';
 import {
+  createJsonReplacer,
   type EnvMap,
   formatDuration,
   useWorkflowResourceData,
@@ -838,7 +839,9 @@ function GraphNodeDetailPanel({
               <div className="absolute left-3 -top-3 w-px h-3 bg-border" />
               <div className="absolute left-3 top-0 w-3 h-3 border-l border-b rounded-bl-lg border-border" />
               <pre className="text-[11px] overflow-x-auto rounded-md border p-2.5 bg-muted/30 max-h-64 overflow-y-auto">
-                <code>{JSON.stringify(resolvedInput, null, 2)}</code>
+                <code>
+                  {JSON.stringify(resolvedInput, createJsonReplacer(), 2)}
+                </code>
               </pre>
             </div>
           </details>
@@ -854,7 +857,9 @@ function GraphNodeDetailPanel({
               <div className="absolute left-3 -top-3 w-px h-3 bg-border" />
               <div className="absolute left-3 top-0 w-3 h-3 border-l border-b rounded-bl-lg border-border" />
               <pre className="text-[11px] overflow-x-auto rounded-md border p-2.5 bg-muted/30 max-h-64 overflow-y-auto">
-                <code>{JSON.stringify(resolvedOutput, null, 2)}</code>
+                <code>
+                  {JSON.stringify(resolvedOutput, createJsonReplacer(), 2)}
+                </code>
               </pre>
             </div>
           </details>
@@ -874,7 +879,7 @@ function GraphNodeDetailPanel({
               <pre className="text-[11px] overflow-x-auto rounded-md border border-red-200 p-2.5 bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-300 whitespace-pre-wrap max-h-64 overflow-y-auto">
                 <code>
                   {typeof resolvedError === 'object'
-                    ? JSON.stringify(resolvedError, null, 2)
+                    ? JSON.stringify(resolvedError, createJsonReplacer(), 2)
                     : String(resolvedError)}
                 </code>
               </pre>

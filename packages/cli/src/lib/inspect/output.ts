@@ -1,4 +1,8 @@
-import { hydrateResourceIO } from '@workflow/core/observability';
+import { inspect } from 'node:util';
+import {
+  createJsonReplacer,
+  hydrateResourceIO,
+} from '@workflow/core/observability';
 import { parseStepName, parseWorkflowName } from '@workflow/core/parse-name';
 import {
   getDeserializeStream,
@@ -31,6 +35,9 @@ import {
 
 const DEFAULT_PAGE_SIZE = 20;
 let TABLE_TRUNCATE_IO_LENGTH = 15; // Will be adjusted based on terminal width
+
+/** Depth for util.inspect when showing individual resources */
+const CLI_INSPECT_DEPTH = 6;
 
 const WORKFLOW_RUN_IO_PROPS: (keyof WorkflowRun)[] = ['input', 'output'];
 
@@ -393,7 +400,8 @@ const showTable = (
 };
 
 const showJson = (data: unknown) => {
-  const json = JSON.stringify(data, null, 2);
+  // Use custom replacer to handle typed arrays and other special types
+  const json = JSON.stringify(data, createJsonReplacer(), 2);
   process.stdout.write(`${json}\n`);
 };
 
@@ -616,7 +624,14 @@ export const showRun = async (
           "This run's data (input/output/error) has expired and is no longer available."
         );
       }
-      logger.log(runWithHydratedIO);
+      // Use util.inspect with higher depth for better nested object display
+      logger.log(
+        inspect(runWithHydratedIO, {
+          depth: CLI_INSPECT_DEPTH,
+          colors: true,
+          maxArrayLength: 50,
+        })
+      );
     }
   } catch (error) {
     if (handleApiError(error, opts.backend)) {
@@ -738,7 +753,14 @@ export const showStep = async (
       showJson(stepWithHydratedIO);
       return;
     } else {
-      logger.log(stepWithHydratedIO);
+      // Use util.inspect with higher depth for better nested object display
+      logger.log(
+        inspect(stepWithHydratedIO, {
+          depth: CLI_INSPECT_DEPTH,
+          colors: true,
+          maxArrayLength: 50,
+        })
+      );
     }
   } catch (error) {
     if (handleApiError(error, opts.backend)) {
@@ -1016,7 +1038,14 @@ export const showHook = async (
       showJson(hydratedHook);
       return;
     } else {
-      logger.log(hydratedHook);
+      // Use util.inspect with higher depth for better nested object display
+      logger.log(
+        inspect(hydratedHook, {
+          depth: CLI_INSPECT_DEPTH,
+          colors: true,
+          maxArrayLength: 50,
+        })
+      );
     }
   } catch (error) {
     if (handleApiError(error, opts.backend)) {

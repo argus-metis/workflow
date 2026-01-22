@@ -29,12 +29,16 @@ export {
   isTerminalStatus,
   shouldShowReenqueueButton,
 } from './lib/event-analysis';
-export type { StreamStep } from './lib/utils';
+export type { StreamStep, TypedArrayRef } from './lib/utils';
 export {
+  createJsonReplacer,
   extractConversation,
   formatDuration,
   identifyStreamSteps,
   isDoStreamStep,
+  isTypedArray,
+  TYPED_ARRAY_REF_TYPE,
+  typedArrayToRef,
 } from './lib/utils';
 export { RunTraceView } from './run-trace-view';
 export { ConversationView } from './sidebar/conversation-view';

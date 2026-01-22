@@ -381,3 +381,215 @@ export function truncateId(id: string, maxLength = 12): string {
   if (id.length <= maxLength) return id;
   return `${id.slice(0, maxLength)}...`;
 }
+
+// ============================================================================
+// Typed Array Display Utilities
+// ============================================================================
+
+/**
+ * Marker for typed array reference objects used in display.
+ * This is used when serializing typed arrays for JSON output.
+ */
+export const TYPED_ARRAY_REF_TYPE = '__workflow_typed_array_ref__';
+
+/**
+ * A typed array reference that contains type info and a preview of the data.
+ * Used for JSON serialization to avoid outputting huge arrays of bytes.
+ */
+export interface TypedArrayRef {
+  __type: typeof TYPED_ARRAY_REF_TYPE;
+  /** The typed array constructor name (e.g., "Uint8Array") */
+  arrayType: string;
+  /** The length of the array in elements */
+  length: number;
+  /** The byte length of the array */
+  byteLength: number;
+  /** A preview of the first few and last few elements */
+  preview: (number | string)[];
+}
+
+/**
+ * List of typed array constructor names for detection
+ */
+const TYPED_ARRAY_NAMES = [
+  'Int8Array',
+  'Uint8Array',
+  'Uint8ClampedArray',
+  'Int16Array',
+  'Uint16Array',
+  'Int32Array',
+  'Uint32Array',
+  'Float32Array',
+  'Float64Array',
+  'BigInt64Array',
+  'BigUint64Array',
+];
+
+/**
+ * Check if a value is a TypedArray (Uint8Array, Int32Array, etc.)
+ */
+export function isTypedArray(
+  value: unknown
+): value is
+  | Int8Array
+  | Uint8Array
+  | Uint8ClampedArray
+  | Int16Array
+  | Uint16Array
+  | Int32Array
+  | Uint32Array
+  | Float32Array
+  | Float64Array
+  | BigInt64Array
+  | BigUint64Array {
+  if (!value || typeof value !== 'object') return false;
+  return TYPED_ARRAY_NAMES.includes(value.constructor?.name);
+}
+
+/**
+ * Check if a value is a TypedArrayRef object
+ */
+export function isTypedArrayRef(value: unknown): value is TypedArrayRef {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    '__type' in value &&
+    value.__type === TYPED_ARRAY_REF_TYPE &&
+    'arrayType' in value &&
+    typeof value.arrayType === 'string'
+  );
+}
+
+/**
+ * Check if a value is an ArrayBuffer
+ */
+export function isArrayBuffer(value: unknown): value is ArrayBuffer {
+  return value instanceof ArrayBuffer;
+}
+
+/**
+ * Default configuration for typed array display
+ */
+export const TYPED_ARRAY_DISPLAY_CONFIG = {
+  /** Number of elements to show at the start */
+  headCount: 10,
+  /** Number of elements to show at the end */
+  tailCount: 5,
+  /** Threshold below which we show all elements */
+  showAllThreshold: 20,
+};
+
+/**
+ * Convert a typed array to a TypedArrayRef for JSON serialization.
+ * Shows a preview with first N and last M elements for large arrays.
+ */
+export function typedArrayToRef(
+  arr:
+    | Int8Array
+    | Uint8Array
+    | Uint8ClampedArray
+    | Int16Array
+    | Uint16Array
+    | Int32Array
+    | Uint32Array
+    | Float32Array
+    | Float64Array
+    | BigInt64Array
+    | BigUint64Array,
+  config = TYPED_ARRAY_DISPLAY_CONFIG
+): TypedArrayRef {
+  const { headCount, tailCount, showAllThreshold } = config;
+  const arrayType = arr.constructor.name;
+  const length = arr.length;
+  const byteLength = arr.byteLength;
+
+  let preview: (number | string)[];
+
+  // Helper to convert typed array elements to JSON-safe values
+  const toJsonSafe = (v: unknown): number | string =>
+    typeof v === 'bigint' ? v.toString() : (v as number);
+
+  if (length <= showAllThreshold) {
+    // Show all elements for small arrays
+    // Convert BigInt values to strings for JSON compatibility
+    preview = Array.from(arr as unknown as ArrayLike<unknown>, toJsonSafe);
+  } else {
+    // Show first N, ellipsis, last M
+    const head = Array.from(
+      arr.slice(0, headCount) as unknown as ArrayLike<unknown>,
+      toJsonSafe
+    );
+    const tail = Array.from(
+      arr.slice(-tailCount) as unknown as ArrayLike<unknown>,
+      toJsonSafe
+    );
+    preview = [...head, '...', ...tail];
+  }
+
+  return {
+    __type: TYPED_ARRAY_REF_TYPE,
+    arrayType,
+    length,
+    byteLength,
+    preview,
+  };
+}
+
+/**
+ * Convert an ArrayBuffer to a TypedArrayRef for JSON serialization.
+ */
+export function arrayBufferToRef(buffer: ArrayBuffer): TypedArrayRef {
+  // Wrap in Uint8Array to get a preview of the bytes
+  const arr = new Uint8Array(buffer);
+  const ref = typedArrayToRef(arr);
+  // Override the type to show it's an ArrayBuffer
+  return {
+    ...ref,
+    arrayType: 'ArrayBuffer',
+  };
+}
+
+/**
+ * Format a typed array for display as a string.
+ * Example: "Uint8Array(1024) [0, 1, 2, ..., 1021, 1022, 1023]"
+ */
+export function formatTypedArrayAsString(
+  arr:
+    | Int8Array
+    | Uint8Array
+    | Uint8ClampedArray
+    | Int16Array
+    | Uint16Array
+    | Int32Array
+    | Uint32Array
+    | Float32Array
+    | Float64Array
+    | BigInt64Array
+    | BigUint64Array,
+  config = TYPED_ARRAY_DISPLAY_CONFIG
+): string {
+  const ref = typedArrayToRef(arr, config);
+  return `${ref.arrayType}(${ref.length}) [${ref.preview.join(', ')}]`;
+}
+
+/**
+ * Create a JSON replacer function that handles typed arrays and other
+ * special workflow types for serialization.
+ *
+ * Usage: JSON.stringify(data, createJsonReplacer(), 2)
+ */
+export function createJsonReplacer(): (key: string, value: unknown) => unknown {
+  return function replacer(_key: string, value: unknown): unknown {
+    // Handle typed arrays
+    if (isTypedArray(value)) {
+      return typedArrayToRef(value);
+    }
+
+    // Handle ArrayBuffer
+    if (isArrayBuffer(value)) {
+      return arrayBufferToRef(value);
+    }
+
+    return value;
+  };
+}

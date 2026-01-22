@@ -183,6 +183,43 @@ const isClassInstanceRef = (value: unknown): value is ClassInstanceRef => {
   );
 };
 
+/**
+ * Marker for typed array reference objects used in display.
+ * This is duplicated from @workflow/core/observability to avoid pulling in
+ * Node.js dependencies into the client bundle.
+ */
+const TYPED_ARRAY_REF_TYPE = '__workflow_typed_array_ref__';
+
+/**
+ * A typed array reference that contains type info and a preview of the data.
+ * Used for JSON serialization to avoid outputting huge arrays of bytes.
+ */
+interface TypedArrayRef {
+  __type: typeof TYPED_ARRAY_REF_TYPE;
+  /** The typed array constructor name (e.g., "Uint8Array") */
+  arrayType: string;
+  /** The length of the array in elements */
+  length: number;
+  /** The byte length of the array */
+  byteLength: number;
+  /** A preview of the first few and last few elements */
+  preview: (number | string)[];
+}
+
+/**
+ * Check if a value is a TypedArrayRef object
+ */
+const isTypedArrayRef = (value: unknown): value is TypedArrayRef => {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    '__type' in value &&
+    value.__type === TYPED_ARRAY_REF_TYPE &&
+    'arrayType' in value &&
+    typeof value.arrayType === 'string'
+  );
+};
+
 import ColorHash from 'color-hash';
 
 /**
@@ -334,9 +371,51 @@ const StreamRefDisplay = ({ streamRef }: { streamRef: StreamRef }) => {
 };
 
 /**
- * Recursively transforms a value for JSON display, replacing StreamRef and
- * ClassInstanceRef objects with placeholder strings that can be identified
- * and replaced with React elements.
+ * Renders a TypedArrayRef as a styled badge showing type, size, and preview
+ */
+const TypedArrayRefDisplay = ({
+  typedArrayRef,
+}: {
+  typedArrayRef: TypedArrayRef;
+}) => {
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono"
+      style={{
+        backgroundColor: 'var(--ds-purple-200)',
+        color: 'var(--ds-purple-900)',
+        border: '1px solid var(--ds-purple-400)',
+      }}
+      title={`${typedArrayRef.arrayType} with ${typedArrayRef.length} elements (${typedArrayRef.byteLength} bytes)`}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="10"
+        height="10"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <title>Binary data</title>
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <line x1="9" y1="3" x2="9" y2="21" />
+        <line x1="15" y1="3" x2="15" y2="21" />
+        <line x1="3" y1="9" x2="21" y2="9" />
+        <line x1="3" y1="15" x2="21" y2="15" />
+      </svg>
+      {typedArrayRef.arrayType}({typedArrayRef.length}){' '}
+      <span style={{ opacity: 0.7 }}>[{typedArrayRef.preview.join(', ')}]</span>
+    </span>
+  );
+};
+
+/**
+ * Recursively transforms a value for JSON display, replacing StreamRef,
+ * ClassInstanceRef, and TypedArrayRef objects with placeholder strings
+ * that can be identified and replaced with React elements.
  */
 const transformValueForDisplay = (
   value: unknown
@@ -344,9 +423,11 @@ const transformValueForDisplay = (
   json: string;
   streamRefs: Map<string, StreamRef>;
   classInstanceRefs: Map<string, ClassInstanceRef>;
+  typedArrayRefs: Map<string, TypedArrayRef>;
 } => {
   const streamRefs = new Map<string, StreamRef>();
   const classInstanceRefs = new Map<string, ClassInstanceRef>();
+  const typedArrayRefs = new Map<string, TypedArrayRef>();
   let counter = 0;
 
   const transform = (v: unknown): unknown => {
@@ -358,6 +439,11 @@ const transformValueForDisplay = (
     if (isClassInstanceRef(v)) {
       const placeholder = `__CLASS_INSTANCE_REF_${counter++}__`;
       classInstanceRefs.set(placeholder, v);
+      return placeholder;
+    }
+    if (isTypedArrayRef(v)) {
+      const placeholder = `__TYPED_ARRAY_REF_${counter++}__`;
+      typedArrayRefs.set(placeholder, v);
       return placeholder;
     }
     if (Array.isArray(v)) {
@@ -378,15 +464,20 @@ const transformValueForDisplay = (
     json: JSON.stringify(transformed, null, 2),
     streamRefs,
     classInstanceRefs,
+    typedArrayRefs,
   };
 };
 
 const JsonBlock = (value: unknown) => {
-  const { json, streamRefs, classInstanceRefs } =
+  const { json, streamRefs, classInstanceRefs, typedArrayRefs } =
     transformValueForDisplay(value);
 
   // If no special refs, just render plain JSON
-  if (streamRefs.size === 0 && classInstanceRefs.size === 0) {
+  if (
+    streamRefs.size === 0 &&
+    classInstanceRefs.size === 0 &&
+    typedArrayRefs.size === 0
+  ) {
     return (
       <pre
         className="text-[11px] overflow-x-auto rounded-md border p-3"
@@ -419,6 +510,13 @@ const JsonBlock = (value: unknown) => {
         key={keyIndex++}
         classInstanceRef={classInstanceRef}
       />
+    );
+  }
+
+  for (const [placeholder, typedArrayRef] of typedArrayRefs) {
+    placeholderComponents.set(
+      placeholder,
+      <TypedArrayRefDisplay key={keyIndex++} typedArrayRef={typedArrayRef} />
     );
   }
 

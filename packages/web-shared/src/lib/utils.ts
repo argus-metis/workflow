@@ -164,3 +164,143 @@ export function identifyStreamSteps(steps: Step[]): StreamStep[] {
       };
     });
 }
+
+// ============================================================================
+// Typed Array Display Utilities (Browser-safe)
+// ============================================================================
+
+/**
+ * List of typed array constructor names for detection
+ */
+const TYPED_ARRAY_NAMES = [
+  'Int8Array',
+  'Uint8Array',
+  'Uint8ClampedArray',
+  'Int16Array',
+  'Uint16Array',
+  'Int32Array',
+  'Uint32Array',
+  'Float32Array',
+  'Float64Array',
+  'BigInt64Array',
+  'BigUint64Array',
+];
+
+/**
+ * Check if a value is a TypedArray (Uint8Array, Int32Array, etc.)
+ */
+export function isTypedArray(
+  value: unknown
+): value is
+  | Int8Array
+  | Uint8Array
+  | Uint8ClampedArray
+  | Int16Array
+  | Uint16Array
+  | Int32Array
+  | Uint32Array
+  | Float32Array
+  | Float64Array
+  | BigInt64Array
+  | BigUint64Array {
+  if (!value || typeof value !== 'object') return false;
+  return TYPED_ARRAY_NAMES.includes(value.constructor?.name);
+}
+
+/**
+ * Marker for typed array reference objects used in display.
+ */
+export const TYPED_ARRAY_REF_TYPE = '__workflow_typed_array_ref__';
+
+/**
+ * A typed array reference that contains type info and a preview of the data.
+ */
+export interface TypedArrayRef {
+  __type: typeof TYPED_ARRAY_REF_TYPE;
+  arrayType: string;
+  length: number;
+  byteLength: number;
+  preview: (number | string)[];
+}
+
+/**
+ * Default configuration for typed array display
+ */
+export const TYPED_ARRAY_DISPLAY_CONFIG = {
+  headCount: 10,
+  tailCount: 5,
+  showAllThreshold: 20,
+};
+
+/**
+ * Convert a typed array to a TypedArrayRef for JSON serialization.
+ * Shows a preview with first N and last M elements for large arrays.
+ */
+export function typedArrayToRef(
+  arr:
+    | Int8Array
+    | Uint8Array
+    | Uint8ClampedArray
+    | Int16Array
+    | Uint16Array
+    | Int32Array
+    | Uint32Array
+    | Float32Array
+    | Float64Array
+    | BigInt64Array
+    | BigUint64Array,
+  config = TYPED_ARRAY_DISPLAY_CONFIG
+): TypedArrayRef {
+  const { headCount, tailCount, showAllThreshold } = config;
+  const arrayType = arr.constructor.name;
+  const length = arr.length;
+  const byteLength = arr.byteLength;
+
+  // Helper to convert typed array elements to JSON-safe values
+  const toJsonSafe = (v: unknown): number | string =>
+    typeof v === 'bigint' ? v.toString() : (v as number);
+
+  let preview: (number | string)[];
+
+  if (length <= showAllThreshold) {
+    preview = Array.from(arr as unknown as ArrayLike<unknown>, toJsonSafe);
+  } else {
+    const head = Array.from(
+      arr.slice(0, headCount) as unknown as ArrayLike<unknown>,
+      toJsonSafe
+    );
+    const tail = Array.from(
+      arr.slice(-tailCount) as unknown as ArrayLike<unknown>,
+      toJsonSafe
+    );
+    preview = [...head, '...', ...tail];
+  }
+
+  return {
+    __type: TYPED_ARRAY_REF_TYPE,
+    arrayType,
+    length,
+    byteLength,
+    preview,
+  };
+}
+
+/**
+ * Create a JSON replacer function that handles typed arrays for display.
+ * Browser-safe version that doesn't require Node.js dependencies.
+ *
+ * Usage: JSON.stringify(data, createJsonReplacer(), 2)
+ */
+export function createJsonReplacer(): (key: string, value: unknown) => unknown {
+  return function replacer(_key: string, value: unknown): unknown {
+    if (isTypedArray(value)) {
+      return typedArrayToRef(value);
+    }
+    if (value instanceof ArrayBuffer) {
+      const arr = new Uint8Array(value);
+      const ref = typedArrayToRef(arr);
+      return { ...ref, arrayType: 'ArrayBuffer' };
+    }
+    return value;
+  };
+}
