@@ -1,4 +1,8 @@
-import { Client } from '@vercel/queue';
+import {
+  Client,
+  DuplicateMessageError,
+  type MessageMetadata,
+} from '@vercel/queue';
 import {
   MessageId,
   type Queue,
@@ -7,6 +11,28 @@ import {
 } from '@workflow/world';
 import * as z from 'zod';
 import { type APIConfig, getHeaders, getHttpUrl } from './utils.js';
+
+/**
+ * Augment @vercel/queue to support handlers that return visibility timeout.
+ * VQS's built-in types only support void returns, but the runtime accepts
+ * timeout objects for controlling message redelivery.
+ */
+declare module '@vercel/queue' {
+  type WorkflowMessageHandler = (
+    message: unknown,
+    metadata: MessageMetadata
+  ) => Promise<void | { timeoutSeconds: number }>;
+
+  interface WorkflowCallbackHandlers {
+    [topicName: string]: { [consumerGroup: string]: WorkflowMessageHandler };
+  }
+
+  interface Client {
+    handleCallback(
+      handlers: WorkflowCallbackHandlers
+    ): (request: Request) => Promise<Response>;
+  }
+}
 
 const MessageWrapper = z.object({
   payload: QueuePayloadSchema,
@@ -106,19 +132,14 @@ export function createQueue(config?: APIConfig): Queue {
     } catch (error) {
       // Silently handle idempotency key conflicts - the message was already queued
       // This matches the behavior of world-local and world-postgres
-      if (
-        error instanceof Error &&
-        // TODO: checking the error message is flaky. VQS should throw a special duplicate
-        // error class
-        error.message === 'Duplicate idempotency key detected'
-      ) {
+      if (error instanceof DuplicateMessageError) {
         // Return a placeholder messageId since the original is not available from the error.
         // Callers using idempotency keys shouldn't depend on the returned messageId.
-        // TODO : VQS should just return the message ID of the exisitng message, or we should
+        // TODO: VQS should return the message ID of the existing message, or we should
         // stop expecting any world to include this
         return {
           messageId: MessageId.parse(
-            `msg_duplicate_${opts?.idempotencyKey ?? 'unknown'}`
+            `msg_duplicate_${error.idempotencyKey ?? opts?.idempotencyKey ?? 'unknown'}`
           ),
         };
       }

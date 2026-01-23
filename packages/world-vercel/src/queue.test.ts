@@ -1,14 +1,32 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Mock @vercel/queue
-const mockSend = vi.fn();
-const mockHandleCallback = vi.fn();
+// Use vi.hoisted to define mocks that will be available to vi.mock
+const { mockSend, mockHandleCallback, MockDuplicateMessageError } = vi.hoisted(
+  () => {
+    // DuplicateMessageError mock class
+    class MockDuplicateMessageError extends Error {
+      public readonly idempotencyKey?: string;
+      constructor(message: string, idempotencyKey?: string) {
+        super(message);
+        this.name = 'DuplicateMessageError';
+        this.idempotencyKey = idempotencyKey;
+      }
+    }
+
+    return {
+      mockSend: vi.fn(),
+      mockHandleCallback: vi.fn(),
+      MockDuplicateMessageError,
+    };
+  }
+);
 
 vi.mock('@vercel/queue', () => ({
   Client: vi.fn().mockImplementation(() => ({
     send: mockSend,
     handleCallback: mockHandleCallback,
   })),
+  DuplicateMessageError: MockDuplicateMessageError,
 }));
 
 // Mock utils
@@ -121,7 +139,10 @@ describe('createQueue', () => {
 
     it('should silently handle idempotency key conflicts', async () => {
       mockSend.mockRejectedValue(
-        new Error('Duplicate idempotency key detected')
+        new MockDuplicateMessageError(
+          'Duplicate idempotency key detected',
+          'my-key'
+        )
       );
 
       const originalEnv = process.env.VERCEL_DEPLOYMENT_ID;
@@ -136,6 +157,7 @@ describe('createQueue', () => {
         );
 
         // Should not throw, and should return a placeholder messageId
+        // Uses error.idempotencyKey when available
         expect(result.messageId).toBe('msg_duplicate_my-key');
       } finally {
         if (originalEnv !== undefined) {
