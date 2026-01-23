@@ -1,32 +1,45 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Use vi.hoisted to define mocks that will be available to vi.mock
-const { mockSend, mockHandleCallback, MockDuplicateMessageError } = vi.hoisted(
-  () => {
-    // DuplicateMessageError mock class
-    class MockDuplicateMessageError extends Error {
-      public readonly idempotencyKey?: string;
-      constructor(message: string, idempotencyKey?: string) {
-        super(message);
-        this.name = 'DuplicateMessageError';
-        this.idempotencyKey = idempotencyKey;
-      }
+const {
+  mockSend,
+  mockParseCallback,
+  mockDeserialize,
+  mockGetOidcToken,
+  MockDuplicateMessageError,
+} = vi.hoisted(() => {
+  // DuplicateMessageError mock class
+  class MockDuplicateMessageError extends Error {
+    public readonly idempotencyKey?: string;
+    constructor(message: string, idempotencyKey?: string) {
+      super(message);
+      this.name = 'DuplicateMessageError';
+      this.idempotencyKey = idempotencyKey;
     }
-
-    return {
-      mockSend: vi.fn(),
-      mockHandleCallback: vi.fn(),
-      MockDuplicateMessageError,
-    };
   }
-);
+
+  return {
+    mockSend: vi.fn(),
+    mockParseCallback: vi.fn(),
+    mockDeserialize: vi.fn(),
+    mockGetOidcToken: vi.fn(),
+    MockDuplicateMessageError,
+  };
+});
 
 vi.mock('@vercel/queue', () => ({
   Client: vi.fn().mockImplementation(() => ({
     send: mockSend,
-    handleCallback: mockHandleCallback,
   })),
   DuplicateMessageError: MockDuplicateMessageError,
+  JsonTransport: vi.fn().mockImplementation(() => ({
+    deserialize: mockDeserialize,
+  })),
+  parseCallback: mockParseCallback,
+}));
+
+vi.mock('@vercel/oidc', () => ({
+  getVercelOidcToken: mockGetOidcToken,
 }));
 
 // Mock utils
@@ -37,11 +50,16 @@ vi.mock('./utils.js', () => ({
   getHeaders: vi.fn().mockReturnValue(new Map()),
 }));
 
+// Mock global fetch
+const mockFetch = vi.fn();
+vi.stubGlobal('fetch', mockFetch);
+
 import { createQueue } from './queue.js';
 
 describe('createQueue', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetOidcToken.mockResolvedValue('test-token');
   });
 
   afterEach(() => {
@@ -190,130 +208,260 @@ describe('createQueue', () => {
   });
 
   describe('createQueueHandler()', () => {
-    // Helper to simulate handleCallback behavior
-    function setupHandler(handlerResult: { timeoutSeconds: number } | void) {
-      const capturedHandlers: Record<
-        string,
-        { default: (body: unknown, meta: unknown) => Promise<unknown> }
-      > = {};
+    // Helper to set up a request handler test
+    function setupHandlerTest(options: {
+      handlerResult: { timeoutSeconds: number } | void;
+      messagePayload: unknown;
+      queueName: string;
+      messageId?: string;
+      createdAt?: Date;
+      deploymentId?: string;
+    }) {
+      const {
+        handlerResult,
+        messagePayload,
+        queueName,
+        messageId = 'msg-123',
+        createdAt = new Date(),
+        deploymentId,
+      } = options;
 
-      mockHandleCallback.mockImplementation((handlers) => {
-        Object.assign(capturedHandlers, handlers);
-        return async (req: Request) => new Response('ok');
+      // Mock parseCallback to return CloudEvent data
+      mockParseCallback.mockResolvedValue({
+        queueName,
+        consumerGroup: 'default',
+        messageId,
       });
 
-      const queue = createQueue();
-      queue.createQueueHandler('__wkf_workflow_', async () => handlerResult);
+      // Mock the receive message response
+      const receiveHeaders = new Headers({
+        'Vqs-Receipt-Handle': 'receipt-123',
+        'Vqs-Delivery-Count': '1',
+        'Vqs-Timestamp': createdAt.toISOString(),
+      });
 
-      // Get the handler that was registered
-      const handlerKey = Object.keys(capturedHandlers)[0];
-      return capturedHandlers[handlerKey].default;
+      // Create a readable stream for the body
+      const messageWrapper = {
+        payload: messagePayload,
+        queueName,
+        deploymentId,
+      };
+
+      mockDeserialize.mockResolvedValue(messageWrapper);
+
+      const receiveResponse = new Response(JSON.stringify(messageWrapper), {
+        status: 200,
+        headers: receiveHeaders,
+      });
+
+      // Track fetch calls
+      const fetchCalls: Array<{ url: string; method: string; body?: string }> =
+        [];
+      mockFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+        fetchCalls.push({
+          url,
+          method: init?.method || 'GET',
+          body: init?.body?.toString(),
+        });
+
+        if (init?.method === 'POST' && url.includes('/id/')) {
+          return receiveResponse;
+        }
+        if (init?.method === 'DELETE' || init?.method === 'PATCH') {
+          return new Response(null, { status: 200 });
+        }
+        return new Response('Not found', { status: 404 });
+      });
+
+      return { fetchCalls, handlerResult };
     }
 
-    it('should pass through timeoutSeconds when message is fresh', async () => {
-      const handler = setupHandler({ timeoutSeconds: 50000 });
+    it('should call PATCH with timeoutSeconds when handler returns timeout', async () => {
+      const { fetchCalls } = setupHandlerTest({
+        handlerResult: { timeoutSeconds: 50000 },
+        messagePayload: { runId: 'run-123' },
+        queueName: '__wkf_workflow_test',
+      });
 
-      const result = await handler(
-        {
-          payload: { runId: 'run-123' },
-          queueName: '__wkf_workflow_test',
-        },
-        { messageId: 'msg-123', deliveryCount: 1, createdAt: new Date() }
-      );
+      const originalEnv = process.env.VERCEL_DEPLOYMENT_ID;
+      process.env.VERCEL_DEPLOYMENT_ID = 'dpl_test';
 
-      // Should pass through unchanged since message is fresh
-      expect(result).toEqual({ timeoutSeconds: 50000 });
-      expect(mockSend).not.toHaveBeenCalled(); // No re-enqueue
+      try {
+        const queue = createQueue();
+        const handler = queue.createQueueHandler(
+          '__wkf_workflow_',
+          async () => ({ timeoutSeconds: 50000 })
+        );
+
+        const request = new Request('http://localhost/api/queue', {
+          method: 'POST',
+          headers: { 'content-type': 'application/cloudevents+json' },
+          body: JSON.stringify({}),
+        });
+
+        const response = await handler(request);
+        expect(response.status).toBe(200);
+
+        // Should have called PATCH to change visibility (not DELETE)
+        const patchCall = fetchCalls.find((c) => c.method === 'PATCH');
+        expect(patchCall).toBeDefined();
+        expect(patchCall?.body).toContain('visibilityTimeoutSeconds');
+
+        const deleteCall = fetchCalls.find((c) => c.method === 'DELETE');
+        expect(deleteCall).toBeUndefined();
+      } finally {
+        if (originalEnv !== undefined) {
+          process.env.VERCEL_DEPLOYMENT_ID = originalEnv;
+        } else {
+          delete process.env.VERCEL_DEPLOYMENT_ID;
+        }
+      }
+    });
+
+    it('should call DELETE when handler returns void', async () => {
+      const { fetchCalls } = setupHandlerTest({
+        handlerResult: undefined,
+        messagePayload: { runId: 'run-123' },
+        queueName: '__wkf_workflow_test',
+      });
+
+      const originalEnv = process.env.VERCEL_DEPLOYMENT_ID;
+      process.env.VERCEL_DEPLOYMENT_ID = 'dpl_test';
+
+      try {
+        const queue = createQueue();
+        const handler = queue.createQueueHandler(
+          '__wkf_workflow_',
+          async () => undefined
+        );
+
+        const request = new Request('http://localhost/api/queue', {
+          method: 'POST',
+          headers: { 'content-type': 'application/cloudevents+json' },
+          body: JSON.stringify({}),
+        });
+
+        const response = await handler(request);
+        expect(response.status).toBe(200);
+
+        // Should have called DELETE (not PATCH)
+        const deleteCall = fetchCalls.find((c) => c.method === 'DELETE');
+        expect(deleteCall).toBeDefined();
+
+        const patchCall = fetchCalls.find((c) => c.method === 'PATCH');
+        expect(patchCall).toBeUndefined();
+      } finally {
+        if (originalEnv !== undefined) {
+          process.env.VERCEL_DEPLOYMENT_ID = originalEnv;
+        } else {
+          delete process.env.VERCEL_DEPLOYMENT_ID;
+        }
+      }
     });
 
     it('should clamp timeoutSeconds when message has limited lifetime remaining', async () => {
-      const handler = setupHandler({ timeoutSeconds: 7200 }); // 2 hours
-
       // Message that was created 22 hours ago
       // maxAllowedTimeout = 86400 - 3600 - 79200 = 3600s (1 hour)
       const oldMessageTime = new Date(Date.now() - 22 * 60 * 60 * 1000);
 
-      const result = await handler(
-        {
-          payload: { runId: 'run-123' },
-          queueName: '__wkf_workflow_test',
-        },
-        { messageId: 'msg-123', deliveryCount: 1, createdAt: oldMessageTime }
-      );
+      const { fetchCalls } = setupHandlerTest({
+        handlerResult: { timeoutSeconds: 7200 }, // Request 2 hours
+        messagePayload: { runId: 'run-123' },
+        queueName: '__wkf_workflow_test',
+        createdAt: oldMessageTime,
+      });
 
-      // Should clamp to maxAllowedTimeout (~3600s)
-      expect(result).toBeDefined();
-      expect((result as { timeoutSeconds: number }).timeoutSeconds).toBeCloseTo(
-        3600,
-        0
-      );
-      expect(mockSend).not.toHaveBeenCalled(); // No re-enqueue, just clamping
+      const originalEnv = process.env.VERCEL_DEPLOYMENT_ID;
+      process.env.VERCEL_DEPLOYMENT_ID = 'dpl_test';
+
+      try {
+        const queue = createQueue();
+        const handler = queue.createQueueHandler(
+          '__wkf_workflow_',
+          async () => ({ timeoutSeconds: 7200 })
+        );
+
+        const request = new Request('http://localhost/api/queue', {
+          method: 'POST',
+          headers: { 'content-type': 'application/cloudevents+json' },
+          body: JSON.stringify({}),
+        });
+
+        const response = await handler(request);
+        expect(response.status).toBe(200);
+
+        // Should have called PATCH with clamped timeout (~3600s)
+        const patchCall = fetchCalls.find((c) => c.method === 'PATCH');
+        expect(patchCall).toBeDefined();
+        const body = JSON.parse(patchCall!.body!);
+        // Should be clamped to around 3600 (give or take a few seconds for test timing)
+        expect(body.visibilityTimeoutSeconds).toBeLessThanOrEqual(3600);
+        expect(body.visibilityTimeoutSeconds).toBeGreaterThan(3500);
+      } finally {
+        if (originalEnv !== undefined) {
+          process.env.VERCEL_DEPLOYMENT_ID = originalEnv;
+        } else {
+          delete process.env.VERCEL_DEPLOYMENT_ID;
+        }
+      }
     });
 
-    it('should re-enqueue when message has no lifetime remaining', async () => {
+    it('should re-enqueue and DELETE when message has no lifetime remaining', async () => {
       mockSend.mockResolvedValue({ messageId: 'new-msg-123' });
-      const handler = setupHandler({ timeoutSeconds: 3600 }); // 1 hour
 
       // Message that was created 23 hours ago (at the buffer limit)
       // maxAllowedTimeout = 86400 - 3600 - 82800 = 0s
       const oldMessageTime = new Date(Date.now() - 23 * 60 * 60 * 1000);
 
-      const result = await handler(
-        {
-          payload: { runId: 'run-123' },
-          queueName: '__wkf_workflow_test',
-          deploymentId: 'dpl_original', // Include deploymentId for re-enqueueing
-        },
-        { messageId: 'msg-123', deliveryCount: 1, createdAt: oldMessageTime }
-      );
+      const { fetchCalls } = setupHandlerTest({
+        handlerResult: { timeoutSeconds: 3600 },
+        messagePayload: { runId: 'run-123' },
+        queueName: '__wkf_workflow_test',
+        createdAt: oldMessageTime,
+        deploymentId: 'dpl_original',
+      });
 
-      // Should return undefined (acknowledge old message)
-      expect(result).toBeUndefined();
+      const originalEnv = process.env.VERCEL_DEPLOYMENT_ID;
+      process.env.VERCEL_DEPLOYMENT_ID = 'dpl_test';
 
-      // Should have re-enqueued
-      expect(mockSend).toHaveBeenCalledTimes(1);
-      const sentPayload = mockSend.mock.calls[0][1];
-      expect(sentPayload.payload).toEqual({ runId: 'run-123' });
-      expect(sentPayload.queueName).toBe('__wkf_workflow_test');
-    });
+      try {
+        const queue = createQueue();
+        const handler = queue.createQueueHandler(
+          '__wkf_workflow_',
+          async () => ({ timeoutSeconds: 3600 })
+        );
 
-    it('should not re-enqueue when message has enough lifetime remaining', async () => {
-      const handler = setupHandler({ timeoutSeconds: 7200 }); // 2 hours
+        const request = new Request('http://localhost/api/queue', {
+          method: 'POST',
+          headers: { 'content-type': 'application/cloudevents+json' },
+          body: JSON.stringify({}),
+        });
 
-      // Message that was created 10 hours ago (plenty of time remaining)
-      const messageTime = new Date(Date.now() - 10 * 60 * 60 * 1000);
+        const response = await handler(request);
+        expect(response.status).toBe(200);
 
-      const result = await handler(
-        {
-          payload: { runId: 'run-123' },
-          queueName: '__wkf_workflow_test',
-        },
-        { messageId: 'msg-123', deliveryCount: 1, createdAt: messageTime }
-      );
+        // Should have re-enqueued via mockSend
+        expect(mockSend).toHaveBeenCalledTimes(1);
+        const sentPayload = mockSend.mock.calls[0][1];
+        expect(sentPayload.payload).toEqual({ runId: 'run-123' });
 
-      // Should return the timeout (not re-enqueue)
-      expect(result).toEqual({ timeoutSeconds: 7200 });
-      expect(mockSend).not.toHaveBeenCalled();
-    });
+        // Should have called DELETE to ack the old message (not PATCH)
+        const deleteCall = fetchCalls.find((c) => c.method === 'DELETE');
+        expect(deleteCall).toBeDefined();
 
-    it('should pass through result when no timeoutSeconds', async () => {
-      const handler = setupHandler(undefined);
-
-      const result = await handler(
-        {
-          payload: { runId: 'run-123' },
-          queueName: '__wkf_workflow_test',
-        },
-        { messageId: 'msg-123', deliveryCount: 1, createdAt: new Date() }
-      );
-
-      expect(result).toBeUndefined();
-      expect(mockSend).not.toHaveBeenCalled();
+        const patchCall = fetchCalls.find((c) => c.method === 'PATCH');
+        expect(patchCall).toBeUndefined();
+      } finally {
+        if (originalEnv !== undefined) {
+          process.env.VERCEL_DEPLOYMENT_ID = originalEnv;
+        } else {
+          delete process.env.VERCEL_DEPLOYMENT_ID;
+        }
+      }
     });
 
     it('should handle step payloads correctly', async () => {
       mockSend.mockResolvedValue({ messageId: 'new-msg-123' });
-      const handler = setupHandler({ timeoutSeconds: 3600 }); // 1 hour
 
       // Old message approaching expiry
       const oldMessageTime = new Date(Date.now() - 23 * 60 * 60 * 1000);
@@ -325,18 +473,43 @@ describe('createQueue', () => {
         stepId: 'step-456',
       };
 
-      await handler(
-        {
-          payload: stepPayload,
-          queueName: '__wkf_step_myStep',
-          deploymentId: 'dpl_original', // Include deploymentId for re-enqueueing
-        },
-        { messageId: 'msg-123', deliveryCount: 1, createdAt: oldMessageTime }
-      );
+      setupHandlerTest({
+        handlerResult: { timeoutSeconds: 3600 },
+        messagePayload: stepPayload,
+        queueName: '__wkf_step_myStep',
+        createdAt: oldMessageTime,
+        deploymentId: 'dpl_original',
+      });
 
-      expect(mockSend).toHaveBeenCalledTimes(1);
-      const sentPayload = mockSend.mock.calls[0][1];
-      expect(sentPayload.payload).toEqual(stepPayload);
+      const originalEnv = process.env.VERCEL_DEPLOYMENT_ID;
+      process.env.VERCEL_DEPLOYMENT_ID = 'dpl_test';
+
+      try {
+        const queue = createQueue();
+        const handler = queue.createQueueHandler(
+          '__wkf_step_',
+          async () => ({ timeoutSeconds: 3600 })
+        );
+
+        const request = new Request('http://localhost/api/queue', {
+          method: 'POST',
+          headers: { 'content-type': 'application/cloudevents+json' },
+          body: JSON.stringify({}),
+        });
+
+        await handler(request);
+
+        // Should have re-enqueued with correct payload
+        expect(mockSend).toHaveBeenCalledTimes(1);
+        const sentPayload = mockSend.mock.calls[0][1];
+        expect(sentPayload.payload).toEqual(stepPayload);
+      } finally {
+        if (originalEnv !== undefined) {
+          process.env.VERCEL_DEPLOYMENT_ID = originalEnv;
+        } else {
+          delete process.env.VERCEL_DEPLOYMENT_ID;
+        }
+      }
     });
   });
 });

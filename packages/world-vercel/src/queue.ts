@@ -1,7 +1,9 @@
+import { getVercelOidcToken } from '@vercel/oidc';
 import {
   Client,
   DuplicateMessageError,
-  type MessageMetadata,
+  JsonTransport,
+  parseCallback,
 } from '@vercel/queue';
 import {
   MessageId,
@@ -11,28 +13,6 @@ import {
 } from '@workflow/world';
 import * as z from 'zod';
 import { type APIConfig, getHeaders, getHttpUrl } from './utils.js';
-
-/**
- * Augment @vercel/queue to support handlers that return visibility timeout.
- * VQS's built-in types only support void returns, but the runtime accepts
- * timeout objects for controlling message redelivery.
- */
-declare module '@vercel/queue' {
-  type WorkflowMessageHandler = (
-    message: unknown,
-    metadata: MessageMetadata
-  ) => Promise<void | { timeoutSeconds: number }>;
-
-  interface WorkflowCallbackHandlers {
-    [topicName: string]: { [consumerGroup: string]: WorkflowMessageHandler };
-  }
-
-  interface Client {
-    handleCallback(
-      handlers: WorkflowCallbackHandlers
-    ): (request: Request) => Promise<Response>;
-  }
-}
 
 const MessageWrapper = z.object({
   payload: QueuePayloadSchema,
@@ -91,6 +71,7 @@ export function createQueue(config?: APIConfig): Queue {
     basePath: usingProxy ? '/queues/v3' : undefined,
     token: usingProxy ? config?.token : undefined,
     headers: Object.fromEntries(headers.entries()),
+    deploymentId: process.env.VERCEL_DEPLOYMENT_ID,
   });
 
   const queue: Queue['queue'] = async (queueName, payload, opts) => {
@@ -115,6 +96,7 @@ export function createQueue(config?: APIConfig): Queue {
     const encoder = hasEncoder
       ? MessageWrapper.encode
       : (data: z.infer<typeof MessageWrapper>) => data;
+
     const encoded = encoder({
       payload,
       queueName,
@@ -147,43 +129,218 @@ export function createQueue(config?: APIConfig): Queue {
     }
   };
 
+  /**
+   * Custom callback handler that supports returning { timeoutSeconds } for visibility control.
+   *
+   * VQS's built-in handleCallback always deletes messages after the handler runs,
+   * ignoring the return value. Workflow needs to return { timeoutSeconds } to control
+   * when messages should be redelivered (for sleep() and retry delays).
+   *
+   * This implementation:
+   * 1. Parses the CloudEvent to get queue/consumer/message info
+   * 2. Receives the message by ID (locks it with visibility timeout)
+   * 3. Calls the handler
+   * 4. Based on result: deletes (ack) or changes visibility (retry later)
+   */
   const createQueueHandler: Queue['createQueueHandler'] = (prefix, handler) => {
-    return queueClient.handleCallback({
-      [`${prefix}*`]: {
-        default: async (body, meta) => {
-          const { payload, queueName, deploymentId } =
-            MessageWrapper.parse(body);
-          const result = await handler(payload, {
-            queueName,
-            messageId: MessageId.parse(meta.messageId),
-            attempt: meta.deliveryCount,
+    const transport = new JsonTransport();
+
+    // Determine the VQS API base URL
+    const vqsBaseUrl = usingProxy
+      ? `${baseUrl}/queues/v3`
+      : (process.env.VERCEL_QUEUE_BASE_URL || 'https://vercel-queue.com') +
+        (process.env.VERCEL_QUEUE_BASE_PATH || '/api/v3/topic');
+
+    const getAuthToken = async (): Promise<string> => {
+      if (usingProxy && config?.token) {
+        return config.token;
+      }
+      const token = await getVercelOidcToken();
+      if (!token) {
+        throw new Error('Failed to get OIDC token');
+      }
+      return token;
+    };
+
+    return async (request: Request): Promise<Response> => {
+      try {
+        // Parse the CloudEvent to extract queue info
+        const { queueName, consumerGroup, messageId } =
+          await parseCallback(request);
+
+        // Verify the queue name matches our prefix
+        if (!queueName.startsWith(prefix.replace('*', ''))) {
+          return Response.json(
+            { error: `Queue ${queueName} does not match prefix ${prefix}` },
+            { status: 404 }
+          );
+        }
+
+        const token = await getAuthToken();
+        const authHeaders: Record<string, string> = {
+          Authorization: `Bearer ${token}`,
+          ...Object.fromEntries(headers.entries()),
+        };
+
+        const deploymentId = process.env.VERCEL_DEPLOYMENT_ID;
+        if (deploymentId) {
+          authHeaders['Vqs-Deployment-Id'] = deploymentId;
+        }
+
+        // Receive message by ID - this locks it with a visibility timeout
+        const receiveUrl = `${vqsBaseUrl}/${encodeURIComponent(queueName)}/consumer/${encodeURIComponent(consumerGroup)}/id/${encodeURIComponent(messageId)}`;
+        const receiveResponse = await fetch(receiveUrl, {
+          method: 'POST',
+          headers: {
+            ...authHeaders,
+            Accept: 'multipart/mixed',
+          },
+        });
+
+        if (!receiveResponse.ok) {
+          const errorText = await receiveResponse.text();
+          console.error('Failed to receive message:', {
+            status: receiveResponse.status,
+            error: errorText,
           });
-          if (typeof result?.timeoutSeconds === 'number') {
-            const now = Date.now();
+          return Response.json(
+            { error: `Failed to receive message: ${errorText}` },
+            { status: receiveResponse.status }
+          );
+        }
 
-            // Calculate how old this message is using the queue's createdAt timestamp
-            const messageAge = (now - meta.createdAt.getTime()) / 1000; // Convert to seconds
+        // Parse the multipart response to get message metadata and payload
+        // VQS returns message metadata in headers: Vqs-Message-Id, Vqs-Delivery-Count, Vqs-Timestamp, Vqs-Receipt-Handle
+        const receiptHandle = receiveResponse.headers.get('Vqs-Receipt-Handle');
+        const deliveryCount = parseInt(
+          receiveResponse.headers.get('Vqs-Delivery-Count') || '1',
+          10
+        );
+        const createdAtStr = receiveResponse.headers.get('Vqs-Timestamp');
+        const createdAt = createdAtStr ? new Date(createdAtStr) : new Date();
 
-            // Calculate the maximum timeout this message can handle before expiring
-            const maxAllowedTimeout =
-              VERCEL_QUEUE_MESSAGE_LIFETIME -
-              MESSAGE_LIFETIME_BUFFER -
-              messageAge;
+        if (!receiptHandle) {
+          return Response.json(
+            { error: 'Missing receipt handle in response' },
+            { status: 500 }
+          );
+        }
 
-            if (maxAllowedTimeout <= 0) {
-              // Message is at its lifetime limit - re-enqueue to get a fresh 24-hour clock
-              // Preserve the original deploymentId to ensure routing to the same deployment
-              await queue(queueName, payload, { deploymentId });
-              return undefined;
-            } else if (result.timeoutSeconds > maxAllowedTimeout) {
-              // Clamp timeout to fit within remaining message lifetime
-              result.timeoutSeconds = maxAllowedTimeout;
-            }
+        // Deserialize the message payload
+        const bodyStream = receiveResponse.body;
+        if (!bodyStream) {
+          return Response.json(
+            { error: 'Missing response body' },
+            { status: 500 }
+          );
+        }
+
+        const rawPayload = await transport.deserialize(bodyStream);
+        const {
+          payload,
+          queueName: wrappedQueueName,
+          deploymentId: msgDeploymentId,
+        } = MessageWrapper.parse(rawPayload);
+
+        // Call the workflow handler
+        const result = await handler(payload, {
+          queueName: wrappedQueueName,
+          messageId: MessageId.parse(messageId),
+          attempt: deliveryCount,
+        });
+
+        // Determine what to do based on handler result
+        let effectiveTimeoutSeconds: number | undefined;
+
+        if (typeof result?.timeoutSeconds === 'number') {
+          const now = Date.now();
+          const messageAge = (now - createdAt.getTime()) / 1000;
+          const maxAllowedTimeout =
+            VERCEL_QUEUE_MESSAGE_LIFETIME -
+            MESSAGE_LIFETIME_BUFFER -
+            messageAge;
+
+          if (maxAllowedTimeout <= 0) {
+            // Message is at its lifetime limit - re-enqueue to get a fresh 24-hour clock
+            await queue(wrappedQueueName, payload, {
+              deploymentId: msgDeploymentId,
+            });
+            effectiveTimeoutSeconds = undefined; // Will delete the old message
+          } else {
+            effectiveTimeoutSeconds = Math.min(
+              result.timeoutSeconds,
+              maxAllowedTimeout
+            );
           }
-          return result;
-        },
-      },
-    });
+        }
+
+        const leaseUrl = `${vqsBaseUrl}/${encodeURIComponent(queueName)}/consumer/${encodeURIComponent(consumerGroup)}/lease/${encodeURIComponent(receiptHandle)}`;
+
+        if (effectiveTimeoutSeconds !== undefined) {
+          // Change visibility timeout - message will be redelivered after timeout
+          const patchResponse = await fetch(leaseUrl, {
+            method: 'PATCH',
+            headers: {
+              ...authHeaders,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              visibilityTimeoutSeconds: effectiveTimeoutSeconds,
+            }),
+          });
+
+          if (!patchResponse.ok) {
+            const errorText = await patchResponse.text();
+            console.error('Failed to change visibility:', {
+              status: patchResponse.status,
+              error: errorText,
+            });
+            return Response.json(
+              { error: `Failed to change visibility: ${errorText}` },
+              { status: patchResponse.status }
+            );
+          }
+        } else {
+          // Delete the message - acknowledge successful processing
+          const deleteResponse = await fetch(leaseUrl, {
+            method: 'DELETE',
+            headers: authHeaders,
+          });
+
+          if (!deleteResponse.ok) {
+            const errorText = await deleteResponse.text();
+            console.error('Failed to delete message:', {
+              status: deleteResponse.status,
+              error: errorText,
+            });
+            return Response.json(
+              { error: `Failed to delete message: ${errorText}` },
+              { status: deleteResponse.status }
+            );
+          }
+        }
+
+        return Response.json({ status: 'success' });
+      } catch (error) {
+        console.error('Queue callback error:', error);
+
+        // Handle parsing errors
+        if (
+          error instanceof Error &&
+          (error.message.includes('Missing required CloudEvent data fields') ||
+            error.message.includes('Invalid CloudEvent') ||
+            error.message.includes('Invalid content type') ||
+            error.message.includes('Failed to parse CloudEvent'))
+        ) {
+          return Response.json({ error: error.message }, { status: 400 });
+        }
+
+        return Response.json(
+          { error: 'Failed to process queue message' },
+          { status: 500 }
+        );
+      }
+    };
   };
 
   const getDeploymentId: Queue['getDeploymentId'] = async () => {
