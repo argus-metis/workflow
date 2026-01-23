@@ -4,6 +4,7 @@ import path from 'path';
 import { afterAll, assert, describe, expect, test } from 'vitest';
 import { dehydrateWorkflowArguments } from '../src/serialization';
 import {
+  cliHealthJson,
   cliInspectJson,
   getProtectionBypassHeaders,
   hasStepSourceMaps,
@@ -960,6 +961,65 @@ describe('e2e', () => {
   );
 
   test(
+    'concurrent hook token conflict - two workflows cannot use the same hook token simultaneously',
+    { timeout: 60_000 },
+    async () => {
+      const token = Math.random().toString(36).slice(2);
+      const customData = Math.random().toString(36).slice(2);
+
+      // Start first workflow - it will create a hook and wait for a payload
+      const run1 = await triggerWorkflow('hookCleanupTestWorkflow', [
+        token,
+        customData,
+      ]);
+
+      // Wait for the hook to be registered by workflow 1
+      await new Promise((resolve) => setTimeout(resolve, 5_000));
+
+      // Start second workflow with the SAME token while first is still running
+      // This should fail because the hook token is already in use
+      const run2 = await triggerWorkflow('hookCleanupTestWorkflow', [
+        token,
+        customData,
+      ]);
+
+      // The second workflow should fail with a hook token conflict error
+      const run2Result = await getWorkflowReturnValue(run2.runId);
+      expect(run2Result.name).toBe('WorkflowRunFailedError');
+      expect(run2Result.cause.message).toContain(
+        'already in use by another workflow'
+      );
+
+      // Verify workflow 2 failed
+      const { json: run2Data } = await cliInspectJson(`runs ${run2.runId}`);
+      expect(run2Data.status).toBe('failed');
+
+      // Now send a payload to complete workflow 1
+      const hookUrl = new URL('/api/hook', deploymentUrl);
+      const res = await fetch(hookUrl, {
+        method: 'POST',
+        headers: getProtectionBypassHeaders(),
+        body: JSON.stringify({
+          token,
+          data: { message: 'test-concurrent', customData },
+        }),
+      });
+      expect(res.status).toBe(200);
+
+      // Verify workflow 1 completed successfully
+      const run1Result = await getWorkflowReturnValue(run1.runId);
+      expect(run1Result).toMatchObject({
+        message: 'test-concurrent',
+        customData,
+        hookCleanupTestData: 'workflow_completed',
+      });
+
+      const { json: run1Data } = await cliInspectJson(`runs ${run1.runId}`);
+      expect(run1Data.status).toBe('completed');
+    }
+  );
+
+  test(
     'stepFunctionPassingWorkflow - step function references can be passed as arguments (without closure vars)',
     { timeout: 60_000 },
     async () => {
@@ -1156,6 +1216,37 @@ describe('e2e', () => {
       expect(stepRes.status).toBe(200);
       const stepResult = await stepRes.json();
       expect(stepResult.healthy).toBe(true);
+    }
+  );
+
+  test(
+    'health check (CLI) - workflow health command reports healthy endpoints',
+    { timeout: 60_000 },
+    async () => {
+      // NOTE: This tests the `workflow health` CLI command which uses the
+      // queue-based health check under the hood. The CLI provides a convenient
+      // way to check endpoint health from the command line.
+
+      // Test checking both endpoints (default behavior)
+      const result = await cliHealthJson({ timeout: 30000 });
+      expect(result.json.allHealthy).toBe(true);
+      expect(result.json.results).toHaveLength(2);
+
+      // Verify workflow endpoint result
+      const workflowResult = result.json.results.find(
+        (r: { endpoint: string }) => r.endpoint === 'workflow'
+      );
+      expect(workflowResult).toBeDefined();
+      expect(workflowResult.healthy).toBe(true);
+      expect(workflowResult.latencyMs).toBeGreaterThan(0);
+
+      // Verify step endpoint result
+      const stepResult = result.json.results.find(
+        (r: { endpoint: string }) => r.endpoint === 'step'
+      );
+      expect(stepResult).toBeDefined();
+      expect(stepResult.healthy).toBe(true);
+      expect(stepResult.latencyMs).toBeGreaterThan(0);
     }
   );
 

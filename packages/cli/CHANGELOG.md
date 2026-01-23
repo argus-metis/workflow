@@ -1,5 +1,30 @@
 # @workflow/cli
 
+## 4.0.1-beta.50
+
+### Patch Changes
+
+- [#816](https://github.com/vercel/workflow/pull/816) [`5ba82ec`](https://github.com/vercel/workflow/commit/5ba82ec4b105d11538be6ad65449986eaf945916) Thanks [@TooTallNate](https://github.com/TooTallNate)! - Add `workflow health` CLI command
+
+- Updated dependencies [[`5ba82ec`](https://github.com/vercel/workflow/commit/5ba82ec4b105d11538be6ad65449986eaf945916), [`5ba82ec`](https://github.com/vercel/workflow/commit/5ba82ec4b105d11538be6ad65449986eaf945916), [`202c524`](https://github.com/vercel/workflow/commit/202c524723932fc5342d33f4b57d26c25c7f9e64), [`5ba82ec`](https://github.com/vercel/workflow/commit/5ba82ec4b105d11538be6ad65449986eaf945916), [`f3785f0`](https://github.com/vercel/workflow/commit/f3785f04fbdf9e6199e0e42c592e3d5ba246a6c6), [`b05dbd7`](https://github.com/vercel/workflow/commit/b05dbd7525c1a4b4027a28e0f4eae9da87ea5788)]:
+  - @workflow/core@4.0.1-beta.41
+  - @workflow/web@4.0.1-beta.30
+  - @workflow/world-local@4.0.1-beta.27
+  - @workflow/world-vercel@4.0.1-beta.28
+  - @workflow/builders@4.0.1-beta.41
+
+## 4.0.1-beta.49
+
+### Patch Changes
+
+- [#811](https://github.com/vercel/workflow/pull/811) [`714b233`](https://github.com/vercel/workflow/commit/714b23300561ede1532c894ae770225f260365cd) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Update log message when PORT not set, and make less prominent
+
+- Updated dependencies [[`1843704`](https://github.com/vercel/workflow/commit/1843704b83d5aaadcf1e4f5f1c73c150bd0bd2a3), [`f93e894`](https://github.com/vercel/workflow/commit/f93e894a6a95a194637dc2ea8b19e1ad0b7653eb), [`d30e5c0`](https://github.com/vercel/workflow/commit/d30e5c0249018083bdd63ac84408449003399099), [`ee7b1fd`](https://github.com/vercel/workflow/commit/ee7b1fd24483c24527d95ba1f5ad444d05b7ffcf)]:
+  - @workflow/swc-plugin@4.0.1-beta.14
+  - @workflow/core@4.0.1-beta.40
+  - @workflow/web@4.0.1-beta.29
+  - @workflow/builders@4.0.1-beta.40
+
 ## 4.0.1-beta.48
 
 ### Patch Changes

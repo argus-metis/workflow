@@ -1,5 +1,34 @@
 # workflow
 
+## 4.0.1-beta.50
+
+### Patch Changes
+
+- Updated dependencies [[`5ba82ec`](https://github.com/vercel/workflow/commit/5ba82ec4b105d11538be6ad65449986eaf945916), [`5ba82ec`](https://github.com/vercel/workflow/commit/5ba82ec4b105d11538be6ad65449986eaf945916)]:
+  - @workflow/core@4.0.1-beta.41
+  - @workflow/cli@4.0.1-beta.50
+  - @workflow/next@4.0.1-beta.46
+  - @workflow/nitro@4.0.1-beta.45
+  - @workflow/typescript-plugin@4.0.1-beta.4
+  - @workflow/astro@4.0.0-beta.24
+  - @workflow/sveltekit@4.0.0-beta.39
+  - @workflow/nuxt@4.0.1-beta.34
+
+## 4.0.1-beta.49
+
+### Patch Changes
+
+- Updated dependencies [[`1843704`](https://github.com/vercel/workflow/commit/1843704b83d5aaadcf1e4f5f1c73c150bd0bd2a3), [`714b233`](https://github.com/vercel/workflow/commit/714b23300561ede1532c894ae770225f260365cd), [`f93e894`](https://github.com/vercel/workflow/commit/f93e894a6a95a194637dc2ea8b19e1ad0b7653eb)]:
+  - @workflow/core@4.0.1-beta.40
+  - @workflow/cli@4.0.1-beta.49
+  - @workflow/astro@4.0.0-beta.23
+  - @workflow/next@4.0.1-beta.45
+  - @workflow/nitro@4.0.1-beta.44
+  - @workflow/rollup@4.0.0-beta.8
+  - @workflow/sveltekit@4.0.0-beta.38
+  - @workflow/typescript-plugin@4.0.1-beta.4
+  - @workflow/nuxt@4.0.1-beta.33
+
 ## 4.0.1-beta.48
 
 ### Patch Changes
