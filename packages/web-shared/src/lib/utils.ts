@@ -170,24 +170,8 @@ export function identifyStreamSteps(steps: Step[]): StreamStep[] {
 // ============================================================================
 
 /**
- * List of typed array constructor names for detection
- */
-const TYPED_ARRAY_NAMES = [
-  'Int8Array',
-  'Uint8Array',
-  'Uint8ClampedArray',
-  'Int16Array',
-  'Uint16Array',
-  'Int32Array',
-  'Uint32Array',
-  'Float32Array',
-  'Float64Array',
-  'BigInt64Array',
-  'BigUint64Array',
-];
-
-/**
  * Check if a value is a TypedArray (Uint8Array, Int32Array, etc.)
+ * Uses ArrayBuffer.isView() for robust detection that cannot be spoofed.
  */
 export function isTypedArray(
   value: unknown
@@ -203,8 +187,9 @@ export function isTypedArray(
   | Float64Array
   | BigInt64Array
   | BigUint64Array {
-  if (!value || typeof value !== 'object') return false;
-  return TYPED_ARRAY_NAMES.includes(value.constructor?.name);
+  // ArrayBuffer.isView() returns true for typed arrays and DataView.
+  // We exclude DataView to only match actual typed arrays.
+  return ArrayBuffer.isView(value) && !(value instanceof DataView);
 }
 
 /**
