@@ -12,5 +12,18 @@
     ],
     "deny": ["Read(./.env)", "Read(./.env.*)"],
     "additionalDirectories": ["../workflow-server"]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/require-signoff.sh"
+          }
+        ]
+      }
+    ]
   }
 }
