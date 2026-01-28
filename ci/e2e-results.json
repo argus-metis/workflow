@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-01-28T07:26:42.692Z",
+  "lastUpdated": "2026-01-28T17:27:27.839Z",
   "commit": "8205717921688f89314a66d0bffd82df8b94db2e",
   "branch": "main",
   "type": "e2e",
@@ -41,10 +41,10 @@
       "progress": 17
     },
     "local": {
-      "status": "partial",
+      "status": "passing",
       "total": 1215,
-      "passed": 1102,
-      "failed": 41,
+      "passed": 1143,
+      "failed": 0,
       "skipped": 72,
       "frameworks": {
         "astro": {
@@ -64,8 +64,8 @@
         },
         "hono": {
           "total": 90,
-          "passed": 41,
-          "failed": 41
+          "passed": 82,
+          "failed": 0
         },
         "nextjs-turbopack": {
           "total": 225,
@@ -98,7 +98,7 @@
           "failed": 0
         }
       },
-      "progress": 91
+      "progress": 94
     },
     "postgres": {
       "status": "passing",
