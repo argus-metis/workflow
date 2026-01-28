@@ -101,22 +101,38 @@ export class NestLocalBuilder extends BaseBuilder {
    * Generate client.js and client.d.ts files that export workflow metadata
    * objects. These can be imported and passed to start() without needing
    * SWC transformation of the client code.
+   *
+   * Generates two types of exports:
+   * 1. Flat exports: `export const myWorkflow = { workflowId: '...' }`
+   * 2. Per-file exports: `export const byFile = { 'path/to/file.ts': { myWorkflow: {...} } }`
    */
   private async createClientExports(manifest: WorkflowManifest): Promise<void> {
     const workflows = manifest.workflows ?? {};
-    const exports: Array<{
+
+    // Group workflows by source file for per-file exports
+    const byFile: Record<
+      string,
+      Array<{ name: string; workflowId: string }>
+    > = {};
+
+    // Collect flat exports with duplicate handling
+    const flatExports: Array<{
       name: string;
       exportName: string;
       workflowId: string;
       sourceFile: string;
     }> = [];
 
-    // Track names to detect duplicates
+    // Track names to detect duplicates for flat exports
     const nameCount = new Map<string, number>();
 
-    // First pass: count occurrences of each name
-    for (const fileWorkflows of Object.values(workflows)) {
-      for (const name of Object.keys(fileWorkflows)) {
+    // First pass: count occurrences of each name and group by file
+    for (const [filePath, fileWorkflows] of Object.entries(workflows)) {
+      const relPath = relative(this.#workingDir, filePath);
+      byFile[relPath] = [];
+
+      for (const [name, data] of Object.entries(fileWorkflows)) {
+        byFile[relPath].push({ name, workflowId: data.workflowId });
         const safeName = name.replace(/\./g, '_');
         nameCount.set(safeName, (nameCount.get(safeName) ?? 0) + 1);
       }
@@ -125,7 +141,7 @@ export class NestLocalBuilder extends BaseBuilder {
     // Track used export names to generate unique suffixes for duplicates
     const usedExportNames = new Map<string, number>();
 
-    // Collect all workflows from the manifest
+    // Second pass: create flat exports with unique names
     for (const [filePath, fileWorkflows] of Object.entries(workflows)) {
       for (const [name, data] of Object.entries(fileWorkflows)) {
         const safeName = name.replace(/\./g, '_');
@@ -138,7 +154,7 @@ export class NestLocalBuilder extends BaseBuilder {
           usedExportNames.set(safeName, count + 1);
         }
 
-        exports.push({
+        flatExports.push({
           name,
           exportName,
           workflowId: data.workflowId,
@@ -147,7 +163,7 @@ export class NestLocalBuilder extends BaseBuilder {
       }
     }
 
-    if (exports.length === 0) {
+    if (flatExports.length === 0) {
       console.log('No workflows found, skipping client exports');
       return;
     }
@@ -162,15 +178,34 @@ export class NestLocalBuilder extends BaseBuilder {
       "//   import { start } from 'workflow/api';",
       '//   await start(myWorkflow, [args]);',
       '',
+      '// === Flat exports (for simple imports) ===',
+      '',
     ];
 
-    for (const { exportName, workflowId, sourceFile } of exports) {
+    for (const { exportName, workflowId, sourceFile } of flatExports) {
       jsLines.push(`// From: ${sourceFile}`);
       jsLines.push(
         `export const ${exportName} = { workflowId: '${workflowId}' };`
       );
       jsLines.push('');
     }
+
+    // Generate per-file exports for workbench compatibility
+    jsLines.push('// === Per-file exports (for workbench compatibility) ===');
+    jsLines.push('');
+    jsLines.push('export const byFile = {');
+
+    for (const [relPath, fileWorkflows] of Object.entries(byFile)) {
+      jsLines.push(`  '${relPath}': {`);
+      for (const { name, workflowId } of fileWorkflows) {
+        // Use quoted key to preserve dots in names like "Calculator.calculate"
+        jsLines.push(`    '${name}': { workflowId: '${workflowId}' },`);
+      }
+      jsLines.push('  },');
+    }
+
+    jsLines.push('};');
+    jsLines.push('');
 
     await writeFile(join(this.#outDir, 'client.js'), jsLines.join('\n'));
 
@@ -182,16 +217,28 @@ export class NestLocalBuilder extends BaseBuilder {
       '  workflowId: string;',
       '}',
       '',
+      '// === Flat exports ===',
+      '',
     ];
 
-    for (const { exportName, sourceFile } of exports) {
+    for (const { exportName, sourceFile } of flatExports) {
       dtsLines.push(`/** Workflow from: ${sourceFile} */`);
       dtsLines.push(`export declare const ${exportName}: WorkflowMetadata;`);
       dtsLines.push('');
     }
 
+    // Add byFile type declaration
+    dtsLines.push('// === Per-file exports ===');
+    dtsLines.push('');
+    dtsLines.push(
+      'export declare const byFile: Record<string, Record<string, WorkflowMetadata>>;'
+    );
+    dtsLines.push('');
+
     await writeFile(join(this.#outDir, 'client.d.ts'), dtsLines.join('\n'));
 
-    console.log(`Generated client exports for ${exports.length} workflow(s)`);
+    console.log(
+      `Generated client exports for ${flatExports.length} workflow(s)`
+    );
   }
 }
