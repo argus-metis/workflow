@@ -106,15 +106,41 @@ export class NestLocalBuilder extends BaseBuilder {
     const workflows = manifest.workflows ?? {};
     const exports: Array<{
       name: string;
+      exportName: string;
       workflowId: string;
       sourceFile: string;
     }> = [];
 
+    // Track names to detect duplicates
+    const nameCount = new Map<string, number>();
+
+    // First pass: count occurrences of each name
+    for (const fileWorkflows of Object.values(workflows)) {
+      for (const name of Object.keys(fileWorkflows)) {
+        const safeName = name.replace(/\./g, '_');
+        nameCount.set(safeName, (nameCount.get(safeName) ?? 0) + 1);
+      }
+    }
+
+    // Track used export names to generate unique suffixes for duplicates
+    const usedExportNames = new Map<string, number>();
+
     // Collect all workflows from the manifest
     for (const [filePath, fileWorkflows] of Object.entries(workflows)) {
       for (const [name, data] of Object.entries(fileWorkflows)) {
+        const safeName = name.replace(/\./g, '_');
+        let exportName = safeName;
+
+        // If this name appears multiple times, add a suffix
+        if ((nameCount.get(safeName) ?? 0) > 1) {
+          const count = usedExportNames.get(safeName) ?? 0;
+          exportName = count === 0 ? safeName : `${safeName}_${count}`;
+          usedExportNames.set(safeName, count + 1);
+        }
+
         exports.push({
           name,
+          exportName,
           workflowId: data.workflowId,
           sourceFile: relative(this.#workingDir, filePath),
         });
@@ -138,12 +164,10 @@ export class NestLocalBuilder extends BaseBuilder {
       '',
     ];
 
-    for (const { name, workflowId, sourceFile } of exports) {
-      // Convert names with dots (like "ClassName.methodName") to valid identifiers
-      const safeName = name.replace(/\./g, '_');
+    for (const { exportName, workflowId, sourceFile } of exports) {
       jsLines.push(`// From: ${sourceFile}`);
       jsLines.push(
-        `export const ${safeName} = { workflowId: '${workflowId}' };`
+        `export const ${exportName} = { workflowId: '${workflowId}' };`
       );
       jsLines.push('');
     }
@@ -160,11 +184,9 @@ export class NestLocalBuilder extends BaseBuilder {
       '',
     ];
 
-    for (const { name, sourceFile } of exports) {
-      // Convert names with dots (like "ClassName.methodName") to valid identifiers
-      const safeName = name.replace(/\./g, '_');
+    for (const { exportName, sourceFile } of exports) {
       dtsLines.push(`/** Workflow from: ${sourceFile} */`);
-      dtsLines.push(`export declare const ${safeName}: WorkflowMetadata;`);
+      dtsLines.push(`export declare const ${exportName}: WorkflowMetadata;`);
       dtsLines.push('');
     }
 
