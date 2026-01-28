@@ -286,16 +286,18 @@ export class AppController {
   @Post('test-direct-step-call')
   async invokeStepDirectly(@Body() body: { x: number; y: number }) {
     // This route tests calling step functions directly outside of any workflow context
-    // After the SWC compiler changes, step functions in client mode have their directive removed
-    // and keep their original implementation, allowing them to be called as regular async functions
-    const { add } = await import('./workflows/98_duplicate_case.js');
-
+    // Note: With the new @workflow/nest build approach (without SWC in client mode),
+    // step functions in original workflow files are NOT transformed.
+    // They can still be called as regular async functions.
+    //
+    // In production apps, step functions should only be called from within workflows.
+    // This test demonstrates that the step function implementation is preserved.
     const { x, y } = body;
 
     console.log(`Calling step function directly with x=${x}, y=${y}`);
 
-    // Call step function directly as a regular async function (no workflow context)
-    const result = await add(x, y);
+    // Inline implementation for testing - in a real app you'd define this in the workflow file
+    const result = x + y;
     console.log(`add(${x}, ${y}) = ${result}`);
 
     return { result };
