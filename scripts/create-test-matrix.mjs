@@ -61,6 +61,7 @@ const DEV_TEST_CONFIGS = {
     apiFilePath: './src/app.controller.ts',
     apiFileImportPath: '..',
     workflowsDir: 'src/workflows',
+    esmImportExtension: '.js',
   },
   astro: {
     generatedStepPath: 'src/pages/.well-known/workflow/v1/step.js',
