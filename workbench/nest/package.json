@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "generate:workflows": "node ../scripts/generate-workflows-registry.js ./src/workflows ./src/_workflows.ts --esm --client",
-    "workflow:build": "workflow-nest build --dirs src/workflows",
+    "workflow:build": "node ../../packages/nest/dist/cli.js build --dirs src/workflows",
     "predev": "pnpm workflow:build && pnpm generate:workflows",
     "prebuild": "pnpm workflow:build && pnpm generate:workflows",
     "dev": "nest start --watch",
