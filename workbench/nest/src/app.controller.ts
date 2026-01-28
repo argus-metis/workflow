@@ -77,16 +77,18 @@ export class AppController {
       );
     }
 
-    // Handle static method lookups (e.g., "Calculator.calculate")
-    let workflow: unknown;
-    if (workflowFn.includes('.')) {
+    // In client mode (using byFile exports), workflows are keyed by full name including dots
+    // e.g., 'Calculator.calculate' is a direct key, not a nested class property
+    // First try direct lookup, then fall back to traditional class-based lookup
+    let workflow: unknown = workflows[workflowFn as keyof typeof workflows];
+
+    // Fall back to traditional class-based lookup for non-client mode
+    if (!workflow && workflowFn.includes('.')) {
       const [className, methodName] = workflowFn.split('.');
       const cls = workflows[className as keyof typeof workflows];
       if (cls && typeof cls === 'function') {
         workflow = (cls as Record<string, unknown>)[methodName];
       }
-    } else {
-      workflow = workflows[workflowFn as keyof typeof workflows];
     }
     if (!workflow) {
       throw new HttpException(
