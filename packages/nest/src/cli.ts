@@ -200,6 +200,11 @@ async function handleDev(args: string[]): Promise<void> {
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   for (const dir of watchDirs) {
+    if (!existsSync(dir)) {
+      console.error(`Error: Directory does not exist: ${dir}`);
+      console.error('Please create the directory or specify a different path with --dirs');
+      process.exit(1);
+    }
     watch(dir, { recursive: true }, (_eventType, filename) => {
       if (!filename?.endsWith('.ts') && !filename?.endsWith('.js')) return;
 
