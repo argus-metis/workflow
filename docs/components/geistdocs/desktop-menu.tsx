@@ -1,7 +1,7 @@
 'use client';
 
-import DynamicLink from 'fumadocs-core/dynamic-link';
-import { ExternalLinkIcon } from 'lucide-react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import {
   NavigationMenu,
   NavigationMenuItem,
@@ -13,36 +13,30 @@ import { cn } from '@/lib/utils';
 
 type DesktopMenuProps = {
   items: { label: string; href: string }[];
-  className?: string;
 };
 
-export const DesktopMenu = ({ items, className }: DesktopMenuProps) => {
+export const DesktopMenu = ({ items }: DesktopMenuProps) => {
   const isMobile = useIsMobile();
+  const pathname = usePathname();
+
+  const isActive = (href: string) => {
+    if (href.startsWith('http')) return false;
+    return pathname === href || pathname.startsWith(`${href}/`);
+  };
 
   return (
     <NavigationMenu viewport={isMobile}>
-      <NavigationMenuList className={cn('gap-px', className)}>
+      <NavigationMenuList className="gap-px">
         {items.map((item) => (
           <NavigationMenuItem key={item.href}>
             <NavigationMenuLink
               asChild
-              className="rounded-md px-3 font-medium text-sm"
-            >
-              {item.href.startsWith('http') ? (
-                <a
-                  className="flex flex-row items-center gap-2"
-                  href={item.href}
-                  rel="noopener"
-                  target="_blank"
-                >
-                  {item.label}
-                  <ExternalLinkIcon className="size-3.5" />
-                </a>
-              ) : (
-                <DynamicLink href={`/[lang]${item.href}`}>
-                  {item.label}
-                </DynamicLink>
+              className={cn(
+                'rounded-md px-3 font-medium text-sm text-muted-foreground',
+                isActive(item.href) && 'text-primary'
               )}
+            >
+              <Link href={item.href}>{item.label}</Link>
             </NavigationMenuLink>
           </NavigationMenuItem>
         ))}

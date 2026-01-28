@@ -1,4 +1,11 @@
-export const Logo = () => (
+import './global.css';
+import type { Metadata } from 'next';
+import { Navbar } from '@/components/geistdocs/navbar';
+import { GeistdocsProvider } from '@/components/geistdocs/provider';
+import { mono, sans } from '@/lib/geistdocs/fonts';
+import { cn } from '@/lib/utils';
+
+const Logo = () => (
   <span className="flex items-center gap-1.5 font-semibold text-foreground tracking-tight text-xl">
     <svg
       fill="none"
@@ -17,12 +24,7 @@ export const Logo = () => (
   </span>
 );
 
-export const github = {
-  owner: 'vercel',
-  repo: 'workflow',
-};
-
-export const nav = [
+const links = [
   {
     label: 'Docs',
     href: '/docs',
@@ -37,7 +39,7 @@ export const nav = [
   },
 ];
 
-export const suggestions = [
+const suggestions = [
   'What is Workflow?',
   'How does retrying work?',
   'What control flow patterns are there?',
@@ -45,19 +47,25 @@ export const suggestions = [
   'How do I build an AI agent?',
 ];
 
-export const title = 'Workflow DevKit Documentation';
+const Layout = ({ children }: LayoutProps<'/'>) => (
+  <html
+    className={cn(sans.variable, mono.variable, 'scroll-smooth antialiased')}
+    lang="en"
+    suppressHydrationWarning
+  >
+    <body>
+      <GeistdocsProvider>
+        <Navbar items={links} suggestions={suggestions}>
+          <Logo />
+        </Navbar>
+        {children}
+      </GeistdocsProvider>
+    </body>
+  </html>
+);
 
-export const prompt = `
-You are a helpful assistant specializing in answering questions about Workflow, an SDK by Vercel that brings durability, reliability, and observability to async JavaScript. Build apps and AI Agents that can suspend, resume, and maintain state with ease.
-
-Always link to relevant documentation using Markdown with the domain \`useworkflow.dev\`. Ensure the link text is descriptive (e.g. [Deploying](https://useworkflow.dev/docs/deploying)) and not just the URL.
-
-Politely refuse to respond to queries that do not relate to Vercel or Workflow DevKit's documentation, guides, or tools.`;
-
-export const translations = {
-  en: {
-    displayName: 'English',
-  },
+export const metadata: Metadata = {
+  metadataBase: new URL('https://useworkflow.dev'),
 };
 
-export const basePath: string | undefined = undefined;
+export default Layout;

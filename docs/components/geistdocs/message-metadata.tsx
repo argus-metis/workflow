@@ -29,8 +29,7 @@ export const MessageMetadata = ({
   if (!lastPart) {
     return (
       <div className="flex items-center gap-2">
-        <Spinner />{' '}
-        {reasoning ? <Shimmer className="text-xs">Thinking...</Shimmer> : ''}
+        <Spinner /> {reasoning ? <Shimmer>Thinking...</Shimmer> : ''}
       </div>
     );
   }

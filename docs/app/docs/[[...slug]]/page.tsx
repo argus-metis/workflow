@@ -1,7 +1,6 @@
 import { Step, Steps } from 'fumadocs-ui/components/steps';
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
 import { createRelativeLink } from 'fumadocs-ui/mdx';
-import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { AgentTraces } from '@/components/custom/agent-traces';
 import { AskAI } from '@/components/geistdocs/ask-ai';
@@ -11,15 +10,18 @@ import {
   DocsDescription,
   DocsPage,
   DocsTitle,
+  generatePageMetadata,
+  generateStaticPageParams,
 } from '@/components/geistdocs/docs-page';
 import { EditSource } from '@/components/geistdocs/edit-source';
 import { Feedback } from '@/components/geistdocs/feedback';
 import { getMDXComponents } from '@/components/geistdocs/mdx-components';
 import { OpenInChat } from '@/components/geistdocs/open-in-chat';
 import { ScrollTop } from '@/components/geistdocs/scroll-top';
+import { TableOfContents } from '@/components/geistdocs/toc';
 import * as AccordionComponents from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
+
 import { getLLMText, source } from '@/lib/geistdocs/source';
 import { TSDoc } from '@/lib/tsdoc';
 
@@ -27,10 +29,10 @@ import { TSDoc } from '@/lib/tsdoc';
 // These pages redirect to /worlds/[id] but still get statically generated
 const WorldTestingPerformanceNoop = () => null;
 
-const Page = async ({ params }: PageProps<'/[lang]/docs/[[...slug]]'>) => {
-  const { slug, lang } = await params;
+const Page = async (props: PageProps<'/docs/[[...slug]]'>) => {
+  const params = await props.params;
 
-  const page = source.getPage(slug, lang);
+  const page = source.getPage(params.slug);
 
   if (!page) {
     notFound();
@@ -41,19 +43,17 @@ const Page = async ({ params }: PageProps<'/[lang]/docs/[[...slug]]'>) => {
 
   return (
     <DocsPage
-      full={page.data.full}
+      slug={params.slug}
       tableOfContent={{
-        style: 'clerk',
-        footer: (
-          <div className="my-3 space-y-3">
-            <Separator />
+        component: (
+          <TableOfContents>
             <EditSource path={page.path} />
             <ScrollTop />
             <Feedback />
             <CopyPage text={markdown} />
             <AskAI href={page.url} />
             <OpenInChat href={page.url} />
-          </div>
+          </TableOfContents>
         ),
       }}
       toc={page.data.toc}
@@ -83,24 +83,14 @@ const Page = async ({ params }: PageProps<'/[lang]/docs/[[...slug]]'>) => {
   );
 };
 
-export const generateStaticParams = () => source.generateParams();
+export const generateStaticParams = generateStaticPageParams;
 
-export const generateMetadata = async ({
-  params,
-}: PageProps<'/[lang]/docs/[[...slug]]'>) => {
-  const { slug, lang } = await params;
-  const page = source.getPage(slug, lang);
+export const generateMetadata = async (
+  props: PageProps<'/docs/[[...slug]]'>
+) => {
+  const params = await props.params;
 
-  if (!page) {
-    notFound();
-  }
-
-  const metadata: Metadata = {
-    title: page.data.title,
-    description: page.data.description,
-  };
-
-  return metadata;
+  return generatePageMetadata(params.slug);
 };
 
 export default Page;

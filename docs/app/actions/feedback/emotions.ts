@@ -1,18 +1,18 @@
 export const emotions = [
   {
-    name: 'cry',
-    emoji: '😭',
+    name: 'angry',
+    emoji: '😡',
   },
   {
     name: 'sad',
-    emoji: '😕',
+    emoji: '🙁',
   },
   {
     name: 'happy',
     emoji: '🙂',
   },
   {
-    name: 'amazed',
-    emoji: '🤩',
+    name: 'ecstatic',
+    emoji: '😍',
   },
 ];

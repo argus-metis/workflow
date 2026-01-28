@@ -1,14 +1,9 @@
 'use client';
 
-import { SiMarkdown } from '@icons-pack/react-simple-icons';
+import { SiGithub, SiMarkdown } from '@icons-pack/react-simple-icons';
 import { ThumbsUpIcon } from 'lucide-react';
 import { usePathname } from 'next/navigation';
-import {
-  type FormEventHandler,
-  useEffect,
-  useState,
-  useTransition,
-} from 'react';
+import { type SyntheticEvent, useEffect, useState, useTransition } from 'react';
 import { sendFeedback } from '@/app/actions/feedback';
 import { emotions } from '@/app/actions/feedback/emotions';
 import { cn } from '@/lib/utils';
@@ -24,9 +19,17 @@ export type Feedback = {
   message: string;
 };
 
+export type ActionResponse = {
+  githubUrl: string;
+};
+
+interface Result extends Feedback {
+  response?: ActionResponse;
+}
+
 export const Feedback = () => {
   const url = usePathname();
-  const [submitted, setSubmitted] = useState(false);
+  const [previous, setPrevious] = useState<Result | null>(null);
   const [emotion, setEmotion] = useState<Emotion | null>(null);
   const [message, setMessage] = useState('');
   const [isPending, startTransition] = useTransition();
@@ -34,17 +37,25 @@ export const Feedback = () => {
   useEffect(() => {
     const item = localStorage.getItem(`docs-feedback-${url}`);
 
-    if (!item) {
+    if (item === null) {
       return;
     }
 
-    setSubmitted(true);
+    setPrevious(JSON.parse(item) as Result);
   }, [url]);
 
-  const submit: FormEventHandler<HTMLFormElement> = (e) => {
-    e.preventDefault();
+  useEffect(() => {
+    const key = `docs-feedback-${url}`;
 
-    if (!emotion) {
+    if (previous) {
+      localStorage.setItem(key, JSON.stringify(previous));
+    } else {
+      localStorage.removeItem(key);
+    }
+  }, [previous, url]);
+
+  const submit = (e?: SyntheticEvent) => {
+    if (emotion == null) {
       return;
     }
 
@@ -54,8 +65,11 @@ export const Feedback = () => {
         message,
       };
 
-      sendFeedback(url, feedback).then(() => {
-        setSubmitted(true);
+      sendFeedback(url, feedback).then((response) => {
+        setPrevious({
+          response,
+          ...feedback,
+        });
         setMessage('');
         setEmotion(null);
       });
@@ -63,6 +77,18 @@ export const Feedback = () => {
 
     e?.preventDefault();
   };
+
+  const activeEmotion = previous?.emotion ?? emotion;
+
+  if (
+    !(
+      process.env.NEXT_PUBLIC_GEISTDOCS_REPO &&
+      process.env.NEXT_PUBLIC_GEISTDOCS_OWNER &&
+      process.env.NEXT_PUBLIC_GEISTDOCS_CATEGORY
+    )
+  ) {
+    return null;
+  }
 
   return (
     <Popover>
@@ -77,9 +103,32 @@ export const Feedback = () => {
       </PopoverTrigger>
       <PopoverContent className="overflow-hidden p-0">
         <div className="overflow-visible">
-          {submitted ? (
+          {previous ? (
             <div className="flex flex-col items-center gap-3 rounded-xl bg-sidebar px-3 py-6 text-center text-sm">
               <p>Thank you for your feedback!</p>
+              <div className="flex flex-row items-center gap-2">
+                <Button asChild size="sm">
+                  <a
+                    href={previous.response?.githubUrl}
+                    rel="noreferrer noopener"
+                    target="_blank"
+                  >
+                    <SiGithub className="size-4" fill="currentColor" />
+                    View on GitHub
+                  </a>
+                </Button>
+
+                <Button
+                  onClick={() => {
+                    setEmotion(previous.emotion);
+                    setPrevious(null);
+                  }}
+                  size="sm"
+                  variant="outline"
+                >
+                  Submit Again
+                </Button>
+              </div>
             </div>
           ) : (
             <form className="flex flex-col" onSubmit={submit}>
@@ -90,7 +139,7 @@ export const Feedback = () => {
                   onChange={(e) => setMessage(e.target.value)}
                   onKeyDown={(e) => {
                     if (!e.shiftKey && e.key === 'Enter') {
-                      e.currentTarget.form?.requestSubmit();
+                      submit(e);
                     }
                   }}
                   placeholder="Leave your feedback..."
@@ -108,7 +157,7 @@ export const Feedback = () => {
                     <Button
                       className={cn(
                         'text-muted-foreground hover:text-foreground',
-                        emotion === e.name ? 'bg-accent text-foreground' : ''
+                        activeEmotion === e.name && 'bg-accent text-foreground'
                       )}
                       key={e.name}
                       onClick={() => setEmotion(e.name)}
@@ -122,7 +171,7 @@ export const Feedback = () => {
                   ))}
                 </div>
                 <Button
-                  disabled={isPending || !emotion || !message}
+                  disabled={isPending}
                   size="sm"
                   type="submit"
                   variant="default"

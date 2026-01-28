@@ -1,5 +1,4 @@
 import { SiGithub } from '@icons-pack/react-simple-icons';
-import { github } from '@/geistdocs';
 
 type EditSourceProps = {
   path: string | undefined;
@@ -12,7 +11,7 @@ export const EditSource = ({ path }: EditSourceProps) => {
   const repo = process.env.NEXT_PUBLIC_GEISTDOCS_REPO;
 
   if (owner && repo && path) {
-    url = `https://github.com/${github.owner}/${github.repo}/edit/main/content/docs/${path}`;
+    url = `https://github.com/${owner}/${repo}/edit/main/docs/content/docs/${path}`;
   }
 
   if (!url) {

@@ -1,4 +1,3 @@
-import { DynamicLink } from 'fumadocs-core/dynamic-link';
 import { TypeTable } from 'fumadocs-ui/components/type-table';
 import defaultMdxComponents from 'fumadocs-ui/mdx';
 import type { MDXComponents } from 'mdx/types';
@@ -26,20 +25,9 @@ export const getMDXComponents = (
 
   pre: CodeBlock,
 
-  a: ({ href, ...props }) =>
-    typeof href === 'string' && href.startsWith('/') ? (
-      <DynamicLink
-        className="font-normal text-primary no-underline"
-        href={`/[lang]${href}`}
-        {...props}
-      />
-    ) : (
-      <a
-        href={href}
-        {...props}
-        className="font-normal text-primary no-underline"
-      />
-    ),
+  a: (props) => (
+    <a {...props} className="font-normal text-primary no-underline" />
+  ),
 
   CodeBlockTabs,
   CodeBlockTabsList,
