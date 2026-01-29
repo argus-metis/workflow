@@ -40,7 +40,8 @@
     "@workflow/example-fastify": "0.0.0",
     "@workflow/vite": "4.0.0-beta.1",
     "@workflow/docs-typecheck": "0.0.0",
-    "@workflow/serde": "4.0.0"
+    "@workflow/serde": "4.0.0",
+    "@workflow/cbor-x": "1.6.2"
   },
   "changesets": [
     "add-documentation",
