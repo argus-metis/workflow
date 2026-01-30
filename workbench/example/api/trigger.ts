@@ -39,10 +39,9 @@ export async function POST(req: Request) {
       workflowManifest.workflows[
         workflowFile as keyof typeof workflowManifest.workflows
       ];
-    const run = await start(
-      workflowFileItems[workflowFn as keyof typeof workflowFileItems],
-      args
-    );
+    const workflow =
+      workflowFileItems[workflowFn as keyof typeof workflowFileItems];
+    const run = await start(workflow, args);
     console.log('Run:', run.runId);
     return Response.json(run);
   } catch (err) {
