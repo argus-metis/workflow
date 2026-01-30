@@ -246,6 +246,12 @@ const stepHandler = getWorldHandlers().createQueueHandler(
               ...Attribute.StepArgumentsCount(args.length),
             });
 
+            // Prefer VERCEL_PROJECT_PRODUCTION_URL for webhook URLs to avoid deployment
+            // protection issues (deployment-specific URLs may be blocked by Vercel's
+            // standard deployment protection).
+            const vercelUrl =
+              process.env.VERCEL_PROJECT_PRODUCTION_URL ??
+              process.env.VERCEL_URL;
             result = await contextStorage.run(
               {
                 stepMetadata: {
@@ -258,8 +264,8 @@ const stepHandler = getWorldHandlers().createQueueHandler(
                   workflowStartedAt: new Date(+workflowStartedAt),
                   // TODO: there should be a getUrl method on the world interface itself. This
                   // solution only works for vercel + local worlds.
-                  url: process.env.VERCEL_URL
-                    ? `https://${process.env.VERCEL_URL}`
+                  url: vercelUrl
+                    ? `https://${vercelUrl}`
                     : `http://localhost:${port ?? 3000}`,
                 },
                 ops,

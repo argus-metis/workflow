@@ -127,8 +127,13 @@ export async function runWorkflow(
 
     // TODO: there should be a getUrl method on the world interface itself. This
     // solution only works for vercel + local worlds.
-    const url = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
+    // Prefer VERCEL_PROJECT_PRODUCTION_URL for webhook URLs to avoid deployment
+    // protection issues (deployment-specific URLs may be blocked by Vercel's
+    // standard deployment protection).
+    const vercelUrl =
+      process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL;
+    const url = vercelUrl
+      ? `https://${vercelUrl}`
       : `http://localhost:${port ?? 3000}`;
 
     // For the workflow VM, we store the context in a symbol on the `globalThis` object
