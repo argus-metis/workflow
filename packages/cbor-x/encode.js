@@ -629,7 +629,13 @@ export class Encoder extends Decoder {
           } else {
             for (let i = 0, l = extensions.length; i < l; i++) {
               const extensionClass = extensionClasses[i];
-              if (value instanceof extensionClass) {
+              // Check both the module's class and encoder.global's class for VM context support
+              const globalClass =
+                encoder.global && encoder.global[extensionClass.name];
+              if (
+                value instanceof extensionClass ||
+                (globalClass && value instanceof globalClass)
+              ) {
                 const extension = extensions[i];
                 let tag = extension.tag;
                 if (tag == undefined)
@@ -719,6 +725,48 @@ export class Encoder extends Decoder {
         position += 8;
       } else if (type === 'undefined') {
         target[position++] = 0xf7;
+      } else if (type === 'function') {
+        // Check if any extension handles this function (e.g., step functions with stepId)
+        if (encoder.instanceExtensions) {
+          for (let i = 0, l = encoder.instanceExtensions.length; i < l; i++) {
+            const extension = encoder.instanceExtensions[i];
+            const extensionClass = extension.Class;
+            // For functions, only try calling as predicate function
+            if (typeof extensionClass === 'function') {
+              let matches = false;
+              try {
+                matches = extensionClass(value) === true;
+              } catch (e) {
+                matches = false;
+              }
+              if (matches) {
+                let tag = extension.tag;
+                if (tag == undefined)
+                  tag =
+                    extension.getTag && extension.getTag.call(encoder, value);
+                if (tag !== undefined) {
+                  if (tag < 0x18) {
+                    target[position++] = 0xc0 | tag;
+                  } else if (tag < 0x100) {
+                    target[position++] = 0xd8;
+                    target[position++] = tag;
+                  } else if (tag < 0x10000) {
+                    target[position++] = 0xd9;
+                    target[position++] = tag >> 8;
+                    target[position++] = tag & 0xff;
+                  } else if (tag > -1) {
+                    target[position++] = 0xda;
+                    targetView.setUint32(position, tag);
+                    position += 4;
+                  }
+                }
+                extension.encode.call(encoder, value, encode, makeRoom);
+                return;
+              }
+            }
+          }
+        }
+        throw new Error('Unknown type: ' + type);
       } else {
         throw new Error('Unknown type: ' + type);
       }
