@@ -17,13 +17,15 @@ import {
 } from '@workflow/core/serialization';
 import { WorkflowAPIError, WorkflowRunNotFoundError } from '@workflow/errors';
 import { findWorkflowDataDir } from '@workflow/utils/check-data-dir';
-import type {
-  Event,
-  Hook,
-  Step,
-  WorkflowRun,
-  WorkflowRunStatus,
-  World,
+import {
+  type Event,
+  type Hook,
+  isLegacySpecVersion,
+  SPEC_VERSION_LEGACY,
+  type Step,
+  type WorkflowRun,
+  type WorkflowRunStatus,
+  type World,
 } from '@workflow/world';
 import { createVercelWorld } from '@workflow/world-vercel';
 
@@ -533,7 +535,6 @@ const toJSONCompatible = <T>(data: T): T => {
 };
 
 const hydrate = <T>(data: T): T => {
-  data = toJSONCompatible(data);
   try {
     return hydrateResourceIO(data as any) as T;
   } catch (error) {
@@ -816,7 +817,13 @@ export async function cancelRun(
 ): Promise<ServerActionResult<void>> {
   try {
     const world = await getWorldFromEnv(worldEnv);
-    await world.events.create(runId, { eventType: 'run_cancelled' });
+    const run = await world.runs.get(runId, { resolveData: 'none' });
+    const compatMode = isLegacySpecVersion(run.specVersion);
+    const eventData = {
+      eventType: 'run_cancelled' as const,
+      specVersion: run.specVersion || 1,
+    };
+    await world.events.create(runId, eventData, { v1Compat: compatMode });
     return createResponse(undefined);
   } catch (error) {
     return createServerActionError<void>(error, 'world.events.create', {
@@ -838,14 +845,17 @@ export async function recreateRun(
   try {
     const world = await getWorldFromEnv({ ...worldEnv });
     const run = await world.runs.get(runId);
+    // Get original input/output
     const hydratedRun = hydrate(run as WorkflowRun);
-    // hydrateResourceIO deserializes the binary input back to the original array
+
+    // Preserve original specVersion - if undefined (legacy v1), use SPEC_VERSION_LEGACY
     const newRun = await start(
       { workflowId: run.workflowName },
       hydratedRun.input as unknown as unknown[],
       {
         deploymentId: deploymentId ?? run.deploymentId,
         world,
+        specVersion: run.specVersion ?? SPEC_VERSION_LEGACY,
       }
     );
     return createResponse(newRun.runId);
@@ -918,6 +928,7 @@ export async function wakeUpRun(
     const world = await getWorldFromEnv({ ...worldEnv });
     const run = await world.runs.get(runId);
     const deploymentId = run.deploymentId;
+    const compatMode = isLegacySpecVersion(run.specVersion);
 
     // Fetch all events for the run
     const eventsResult = await world.events.list({
@@ -951,10 +962,18 @@ export async function wakeUpRun(
     // Create wait_completed events for each pending wait
     for (const waitEvent of pendingWaits) {
       if (waitEvent.correlationId) {
-        await world.events.create(runId, {
-          eventType: 'wait_completed',
-          correlationId: waitEvent.correlationId,
-        });
+        // For v2, include specVersion in event data; for v1Compat, it's not needed
+        const eventData = compatMode
+          ? {
+              eventType: 'wait_completed' as const,
+              correlationId: waitEvent.correlationId,
+            }
+          : {
+              eventType: 'wait_completed' as const,
+              correlationId: waitEvent.correlationId,
+              specVersion: run.specVersion,
+            };
+        await world.events.create(runId, eventData, { v1Compat: compatMode });
       }
     }
 

@@ -7,7 +7,6 @@ import {
   type PaginatedResponse,
   PaginatedResponseSchema,
   StructuredErrorSchema,
-  type UpdateWorkflowRunRequest,
   type WorkflowRun,
   WorkflowRunBaseSchema,
   type WorkflowRunWithoutData,
@@ -18,7 +17,6 @@ import {
   DEFAULT_RESOLVE_DATA_OPTION,
   deserializeError,
   makeRequest,
-  serializeError,
 } from './utils.js';
 
 /**
@@ -41,6 +39,7 @@ const WorkflowRunWireBaseSchema = WorkflowRunBaseSchema.omit({
 const WorkflowRunWireSchema = WorkflowRunWireBaseSchema;
 
 // Wire schema for lazy mode with refs instead of data
+// input/output can be Uint8Array (v2) or any JSON (legacy v1)
 const WorkflowRunWireWithRefsSchema = WorkflowRunWireBaseSchema.omit({
   input: true,
   output: true,
@@ -48,8 +47,9 @@ const WorkflowRunWireWithRefsSchema = WorkflowRunWireBaseSchema.omit({
   // We discard the results of the refs, so we don't care about the type here
   inputRef: z.any().optional(),
   outputRef: z.any().optional(),
-  input: z.instanceof(Uint8Array).optional(),
-  output: z.instanceof(Uint8Array).optional(),
+  // Accept both Uint8Array (v2 format) and any (legacy v1 JSON format)
+  input: z.union([z.instanceof(Uint8Array), z.any()]).optional(),
+  output: z.union([z.instanceof(Uint8Array), z.any()]).optional(),
   blobStorageBytes: z.number().optional(),
   streamStorageBytes: z.number().optional(),
 });
@@ -141,12 +141,12 @@ export async function listWorkflowRuns(
   };
 }
 
-export async function createWorkflowRun(
+export async function createWorkflowRunV1(
   data: CreateWorkflowRunRequest,
   config?: APIConfig
 ): Promise<WorkflowRun> {
   const run = await makeRequest({
-    endpoint: '/v2/runs/create',
+    endpoint: '/v1/runs/create',
     options: { method: 'POST' },
     data,
     config,
@@ -203,45 +203,22 @@ export async function getWorkflowRun(
   }
 }
 
-export async function updateWorkflowRun(
-  id: string,
-  data: UpdateWorkflowRunRequest,
-  config?: APIConfig
-): Promise<WorkflowRun> {
-  try {
-    const serialized = serializeError(data);
-    const run = await makeRequest({
-      endpoint: `/v2/runs/${id}`,
-      options: { method: 'PUT' },
-      data: serialized,
-      config,
-      schema: WorkflowRunWireSchema,
-    });
-    return deserializeError<WorkflowRun>(run);
-  } catch (error) {
-    if (error instanceof WorkflowAPIError && error.status === 404) {
-      throw new WorkflowRunNotFoundError(id);
-    }
-    throw error;
-  }
-}
-
-export async function cancelWorkflowRun(
+export async function cancelWorkflowRunV1(
   id: string,
   params: CancelWorkflowRunParams & { resolveData: 'none' },
   config?: APIConfig
 ): Promise<WorkflowRunWithoutData>;
-export async function cancelWorkflowRun(
+export async function cancelWorkflowRunV1(
   id: string,
   params?: CancelWorkflowRunParams & { resolveData?: 'all' },
   config?: APIConfig
 ): Promise<WorkflowRun>;
-export async function cancelWorkflowRun(
+export async function cancelWorkflowRunV1(
   id: string,
   params?: CancelWorkflowRunParams,
   config?: APIConfig
 ): Promise<WorkflowRun | WorkflowRunWithoutData>;
-export async function cancelWorkflowRun(
+export async function cancelWorkflowRunV1(
   id: string,
   params?: CancelWorkflowRunParams,
   config?: APIConfig
@@ -253,7 +230,7 @@ export async function cancelWorkflowRun(
   searchParams.set('remoteRefBehavior', remoteRefBehavior);
 
   const queryString = searchParams.toString();
-  const endpoint = `/v2/runs/${id}/cancel${queryString ? `?${queryString}` : ''}`;
+  const endpoint = `/v1/runs/${id}/cancel${queryString ? `?${queryString}` : ''}`;
 
   try {
     const run = await makeRequest({

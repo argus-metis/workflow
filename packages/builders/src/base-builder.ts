@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
+import { pluralize } from '@workflow/utils';
 import chalk from 'chalk';
 import enhancedResolveOriginal from 'enhanced-resolve';
 import * as esbuild from 'esbuild';
@@ -13,6 +14,7 @@ import {
 } from './apply-swc-transform.js';
 import { createDiscoverEntriesPlugin } from './discover-entries-esbuild-plugin.js';
 import { createNodeModuleErrorPlugin } from './node-module-esbuild-plugin.js';
+import { createPseudoPackagePlugin } from './pseudo-package-esbuild-plugin.js';
 import { createSwcPlugin } from './swc-esbuild-plugin.js';
 import type { WorkflowConfig } from './types.js';
 import { extractWorkflowGraphs } from './workflows-extractor.js';
@@ -370,6 +372,9 @@ export abstract class BaseBuilder {
       // occur in deeply nested function calls across multiple files.
       sourcemap: 'inline',
       plugins: [
+        // Handle pseudo-packages like 'server-only' and 'client-only' by providing
+        // empty modules. Must run first to intercept these before other resolution.
+        createPseudoPackagePlugin(),
         createSwcPlugin({
           mode: 'step',
           entriesToBundle: externalizeNonSteps
@@ -538,6 +543,9 @@ export abstract class BaseBuilder {
         '.cjs',
       ],
       plugins: [
+        // Handle pseudo-packages like 'server-only' and 'client-only' by providing
+        // empty modules. Must run first to intercept these before other resolution.
+        createPseudoPackagePlugin(),
         createSwcPlugin({
           mode: 'workflow',
           workflowManifest,
@@ -546,8 +554,14 @@ export abstract class BaseBuilder {
         // happens first, preventing false positives on Node.js imports in unused code paths
         createNodeModuleErrorPlugin(),
       ],
-      // External packages that should not be bundled (e.g., server-only, client-only for Next.js)
-      external: this.config.externalPackages || [],
+      // NOTE: We intentionally do NOT use the external option here for workflow bundles.
+      // When packages are marked external with format: 'cjs', esbuild generates require() calls.
+      // However, the workflow VM (vm.runInContext) does not have require() defined - it only
+      // provides module.exports and exports. External packages would fail at runtime with:
+      //   ReferenceError: require is not defined
+      // Instead, we bundle everything and rely on:
+      // - createPseudoPackagePlugin() to handle server-only/client-only with empty modules
+      // - createNodeModuleErrorPlugin() to catch Node.js builtin imports at build time
     });
     const interimBundle = await interimBundleCtx.rebuild();
 
@@ -957,7 +971,7 @@ export const OPTIONS = handler;`;
       );
 
       console.log(
-        `Created manifest with ${stepCount} step(s), ${workflowCount} workflow(s), and ${classCount} class(es)`,
+        `Created manifest with ${stepCount} ${pluralize('step', 'steps', stepCount)}, ${workflowCount} ${pluralize('workflow', 'workflows', workflowCount)}, and ${classCount} ${pluralize('class', 'classes', classCount)}`,
         `${Date.now() - buildStart}ms`
       );
     } catch (error) {

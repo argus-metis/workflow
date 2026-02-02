@@ -1,7 +1,15 @@
 import { z } from 'zod';
-import { SerializedDataSchema, type SerializedData } from './serialization.js';
-import { type PaginationOptions, type ResolveData } from './shared.js';
+import type { SerializedData } from './serialization.js';
+import { SerializedDataSchema } from './serialization.js';
+import type { PaginationOptions, ResolveData } from './shared.js';
 
+/**
+ * Schema for workflow hooks.
+ *
+ * Note: metadata uses SerializedDataSchema to support both:
+ * - specVersion >= 2: Uint8Array (binary devalue format)
+ * - specVersion 1: any (legacy JSON format)
+ */
 // Hook schemas
 export const HookSchema = z.object({
   runId: z.string(),
@@ -18,6 +26,10 @@ export const HookSchema = z.object({
 
 /**
  * Represents a hook that can be used to resume a paused workflow run.
+ *
+ * Note: metadata type is SerializedData to support both:
+ * - specVersion >= 2: Uint8Array (binary devalue format)
+ * - specVersion 1: unknown (legacy JSON format)
  */
 export type Hook = z.infer<typeof HookSchema> & {
   /** The unique identifier of the workflow run this hook belongs to. */
