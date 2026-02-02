@@ -57,7 +57,7 @@ export const createOgImage = async ({
         src={backgroundImage as never}
         width={OG_IMAGE_SIZE.width}
       />
-      <div tw="flex flex-col absolute left-[78px] top-[208px] w-[660px]">
+      <div tw="flex flex-col absolute left-[78px] top-[208px] w-[660px] border-2">
         {badge && (
           <div
             style={{ backgroundColor: badge.color }}
