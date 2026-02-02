@@ -1,19 +1,11 @@
-import { createOgImage, OG_IMAGE_SIZE } from '@/lib/og';
+import type { NextRequest } from 'next/server';
+import { createOgImage } from '@/lib/og';
 import { getWorldData, getWorldIds } from '@/lib/worlds-data';
 
-export const size = OG_IMAGE_SIZE;
-export const contentType = 'image/png';
-
-export function generateStaticParams() {
-  const ids = getWorldIds();
-  return ids.map((id) => ({ id }));
-}
-
-export default async function Image({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export const GET = async (
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) => {
   const { id } = await params;
   const data = await getWorldData(id);
 
@@ -31,4 +23,6 @@ export default async function Image({
       color: world.type === 'official' ? '#3b82f6' : '#8b5cf6',
     },
   });
-}
+};
+
+export const generateStaticParams = () => getWorldIds().map((id) => ({ id }));
