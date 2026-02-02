@@ -18,10 +18,6 @@ export const GET = async (
   return createOgImage({
     title: `${world.name} World`,
     description: world.description,
-    badge: {
-      text: world.type === 'official' ? 'Official' : 'Community',
-      color: world.type === 'official' ? '#3b82f6' : '#8b5cf6',
-    },
   });
 };
 
