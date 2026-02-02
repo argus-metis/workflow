@@ -57,7 +57,7 @@ export const createOgImage = async ({
         src={backgroundImage as never}
         width={OG_IMAGE_SIZE.width}
       />
-      <div tw="flex flex-col absolute h-full w-[750px] left-[82px] top-[164px] pb-[86px] pt-[120px] max-w-2xl">
+      <div tw="flex flex-col absolute w-[600px] left-[60px] top-[140px]">
         {badge && (
           <span
             style={{ backgroundColor: badge.color }}
@@ -67,19 +67,18 @@ export const createOgImage = async ({
           </span>
         )}
         <div
-          style={{ textWrap: 'balance', letterSpacing: '-0.04em' }}
-          tw="text-7xl font-medium text-white flex leading-[1.1] mb-4 text-[#ededed]"
+          style={{ letterSpacing: '-0.04em' }}
+          tw="text-[56px] font-semibold leading-[1.15] mb-4"
         >
-          {title}
+          <span tw="text-white">Workflow: </span>
+          <span tw="text-[#888888]">{title}</span>
         </div>
         {description && (
           <div
             style={{
-              color: '#8B8B8B',
-              lineHeight: '38px',
-              textWrap: 'balance',
+              lineHeight: '32px',
             }}
-            tw="text-[28px] text-[#A0A0A0]"
+            tw="text-[24px] text-[#666666]"
           >
             {description}
           </div>
