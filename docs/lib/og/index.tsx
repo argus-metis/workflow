@@ -2,6 +2,9 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ImageResponse } from 'next/og';
 
+/** Standard OpenGraph image dimensions */
+export const OG_IMAGE_SIZE = { width: 1200, height: 628 };
+
 export type OgImageOptions = {
   title: string;
   description?: string;
@@ -50,9 +53,9 @@ export const createOgImage = async ({
       {/** biome-ignore lint/performance/noImgElement: Required for Satori */}
       <img
         alt="Background"
-        height={628}
+        height={OG_IMAGE_SIZE.height}
         src={backgroundImage as never}
-        width={1200}
+        width={OG_IMAGE_SIZE.width}
       />
       <div tw="flex flex-col absolute h-full w-[750px] left-[82px] top-[164px] pb-[86px] pt-[120px] max-w-2xl">
         {badge && (
@@ -84,8 +87,7 @@ export const createOgImage = async ({
       </div>
     </div>,
     {
-      width: 1200,
-      height: 628,
+      ...OG_IMAGE_SIZE,
       fonts: [
         {
           name: 'Geist',
@@ -95,7 +97,7 @@ export const createOgImage = async ({
         {
           name: 'Geist',
           data: fonts.semibold,
-          weight: 500,
+          weight: 600,
         },
       ],
     }
