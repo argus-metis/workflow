@@ -71,7 +71,7 @@ export const createOgImage = async ({
           style={{ letterSpacing: '-0.025em' }}
           tw="text-[72px] font-semibold leading-[1.15] text-[#888888]"
         >
-          {`\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0${title}`}
+          {`\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0 ${title}`}
           {/* {`Workflow: ${title}`} */}
         </div>
         {description && (
