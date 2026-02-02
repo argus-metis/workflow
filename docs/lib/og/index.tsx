@@ -57,28 +57,29 @@ export const createOgImage = async ({
         src={backgroundImage as never}
         width={OG_IMAGE_SIZE.width}
       />
-      <div tw="flex flex-col absolute w-[600px] left-[120px] top-[290px]">
+      <div tw="flex flex-col absolute left-[78px] top-[208px] w-[660px]">
         {badge && (
-          <span
+          <div
             style={{ backgroundColor: badge.color }}
             tw="text-sm font-semibold text-white px-4 py-1.5 rounded-full mb-5 self-start uppercase tracking-wide"
           >
             {badge.text}
-          </span>
+          </div>
         )}
+        {/* Non-breaking spaces to match "Workflow: " width, then title flows naturally */}
         <div
-          style={{ textWrap: 'balance', letterSpacing: '-0.04em' }}
-          tw="text-[52px] font-semibold leading-[1.1] text-[#888888]"
+          style={{ letterSpacing: '-0.025em' }}
+          tw="text-[72px] font-semibold leading-[1.15] text-[#888888]"
         >
-          {title}
+          {`\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0${title}`}
+          {/* {`Workflow: ${title}`} */}
         </div>
         {description && (
           <div
             style={{
-              lineHeight: '32px',
-              textWrap: 'balance',
+              lineHeight: '30px',
             }}
-            tw="text-[24px] text-[#666666] mt-4"
+            tw="text-[20px] text-[#666666] mt-5"
           >
             {description}
           </div>
