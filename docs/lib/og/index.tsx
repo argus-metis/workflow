@@ -68,9 +68,9 @@ export const createOgImage = async ({
         )}
         <div
           style={{ letterSpacing: '-0.04em' }}
-          tw="text-[56px] font-semibold leading-[1.15] mb-4"
+          tw="flex flex-wrap text-[56px] font-semibold leading-[1.15] mb-4"
         >
-          <span tw="text-white">Workflow: </span>
+          <span tw="text-white">Workflow:&nbsp;</span>
           <span tw="text-[#888888]">{title}</span>
         </div>
         {description && (
