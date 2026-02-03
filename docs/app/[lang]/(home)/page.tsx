@@ -21,7 +21,14 @@ export const metadata: Metadata = {
     canonical: '/',
   },
   openGraph: {
-    images: ['/og'],
+    images: [
+      {
+        url: '/og',
+        width: 1200,
+        height: 630,
+        alt: 'Workflow DevKit - Make any TypeScript Function Durable',
+      },
+    ],
   },
 };
 

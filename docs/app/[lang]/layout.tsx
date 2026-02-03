@@ -21,6 +21,16 @@ const getMetadataBase = () => {
 
 export const metadata: Metadata = {
   metadataBase: getMetadataBase(),
+  openGraph: {
+    type: 'website',
+    siteName: 'Workflow DevKit',
+    locale: 'en_US',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    site: '@vercel',
+    creator: '@vercel',
+  },
 };
 
 const Layout = async ({ children, params }: LayoutProps<'/[lang]'>) => {

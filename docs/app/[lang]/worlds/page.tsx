@@ -11,7 +11,14 @@ export const metadata: Metadata = {
   description:
     'The World abstraction allows workflows to run anywhere — locally, on Vercel, or on any cloud. The runtime, queues, and persistence are modular and entirely swappable.',
   openGraph: {
-    images: ['/og/worlds'],
+    images: [
+      {
+        url: '/og/worlds',
+        width: 1200,
+        height: 630,
+        alt: 'Worlds - Workflow DevKit',
+      },
+    ],
   },
 };
 

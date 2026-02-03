@@ -99,7 +99,14 @@ export const generateMetadata = async ({
     title: page.data.title,
     description: page.data.description,
     openGraph: {
-      images: getPageImage(page).url,
+      images: [
+        {
+          url: getPageImage(page).url,
+          width: 1200,
+          height: 630,
+          alt: `${page.data.title} - Workflow DevKit`,
+        },
+      ],
     },
   };
 

@@ -2,8 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ImageResponse } from 'next/og';
 
-/** Standard OpenGraph image dimensions */
-export const OG_IMAGE_SIZE = { width: 1200, height: 628 };
+/** Standard OpenGraph image dimensions (1200x630 is the recommended size) */
+export const OG_IMAGE_SIZE = { width: 1200, height: 630 };
 
 export type OgImageOptions = {
   title: string;

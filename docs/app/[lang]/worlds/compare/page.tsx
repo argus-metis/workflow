@@ -15,6 +15,16 @@ export const metadata: Metadata = {
     index: false,
     follow: false,
   },
+  openGraph: {
+    images: [
+      {
+        url: '/og/worlds',
+        width: 1200,
+        height: 630,
+        alt: 'Compare World Benchmarks - Workflow DevKit',
+      },
+    ],
+  },
 };
 
 export default async function CompareBenchmarksPage() {
