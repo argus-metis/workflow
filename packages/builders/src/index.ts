@@ -4,8 +4,8 @@ export { BaseBuilder } from './base-builder.js';
 export { createBuildQueue } from './build-queue.js';
 export {
   createBaseBuilderConfig,
-  getDecoratorOptionsForDirectory,
   type DecoratorOptions,
+  getDecoratorOptionsForDirectory,
 } from './config-helpers.js';
 export { STEP_QUEUE_TRIGGER, WORKFLOW_QUEUE_TRIGGER } from './constants.js';
 export { createDiscoverEntriesPlugin } from './discover-entries-esbuild-plugin.js';
@@ -17,6 +17,20 @@ export {
 export { NORMALIZE_REQUEST_CODE } from './request-converter.js';
 export { StandaloneBuilder } from './standalone.js';
 export { createSwcPlugin } from './swc-esbuild-plugin.js';
+export {
+  detectWorkflowPatterns,
+  generatedWorkflowPathPattern,
+  isGeneratedWorkflowFile,
+  isWorkflowSdkFile,
+  shouldTransformFile,
+  turbopackContentPattern,
+  useStepPattern,
+  useWorkflowPattern,
+  type WorkflowPatternMatch,
+  workflowSdkPathPattern,
+  workflowSerdeImportPattern,
+  workflowSerdeSymbolPattern,
+} from './transform-utils.js';
 export type {
   AstroConfig,
   BuildTarget,
