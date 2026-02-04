@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-02-04T20:32:41.200Z",
+  "lastUpdated": "2026-02-04T20:41:23.385Z",
   "commit": "8ab1ba24d6ba291add0a271049eff24628c83a05",
   "branch": "main",
   "type": "e2e",
@@ -161,10 +161,10 @@
       "progress": 94
     },
     "vercel": {
-      "status": "partial",
+      "status": "passing",
       "total": 517,
-      "passed": 478,
-      "failed": 1,
+      "passed": 479,
+      "failed": 0,
       "skipped": 38,
       "frameworks": {
         "astro": {
@@ -204,8 +204,8 @@
         },
         "nuxt": {
           "total": 47,
-          "passed": 42,
-          "failed": 1
+          "passed": 43,
+          "failed": 0
         },
         "sveltekit": {
           "total": 47,
@@ -218,7 +218,7 @@
           "failed": 0
         }
       },
-      "progress": 92
+      "progress": 93
     }
   }
 }
