@@ -10,10 +10,10 @@ import { findUp } from 'find-up';
 import { glob } from 'tinyglobby';
 import {
   applySwcTransform,
-  type RawWorkflowManifest,
   type WorkflowManifest,
 } from './apply-swc-transform.js';
 import { createDiscoverEntriesPlugin } from './discover-entries-esbuild-plugin.js';
+import { mergeRawManifest } from './manifest-utils.js';
 import { getImportPath } from './module-specifier.js';
 import { createNodeModuleErrorPlugin } from './node-module-esbuild-plugin.js';
 import { createPseudoPackagePlugin } from './pseudo-package-esbuild-plugin.js';
@@ -25,48 +25,6 @@ const enhancedResolve = promisify(enhancedResolveOriginal);
 
 const EMIT_SOURCEMAPS_FOR_DEBUGGING =
   process.env.WORKFLOW_EMIT_SOURCEMAPS_FOR_DEBUGGING === '1';
-
-/**
- * Merge a raw manifest (with source) into the final manifest (with exports).
- */
-function mergeRawManifest(
-  target: WorkflowManifest,
-  raw: RawWorkflowManifest,
-  condition: 'default' | 'workflow'
-): void {
-  // Merge steps
-  if (raw.steps) {
-    if (!target.steps) target.steps = {};
-    for (const [id, data] of Object.entries(raw.steps)) {
-      if (!target.steps[id]) {
-        target.steps[id] = { stepId: id, name: data.name, exports: {} };
-      }
-      target.steps[id].exports[condition] = data.source;
-    }
-  }
-
-  // Merge workflows
-  if (raw.workflows) {
-    if (!target.workflows) target.workflows = {};
-    for (const [id, data] of Object.entries(raw.workflows)) {
-      if (!target.workflows[id]) {
-        target.workflows[id] = { workflowId: id, name: data.name, exports: {} };
-      }
-      target.workflows[id].exports[condition] = data.source;
-    }
-  }
-
-  // Merge classes
-  if (raw.classes) {
-    if (!target.classes) target.classes = {};
-    for (const [id, data] of Object.entries(raw.classes)) {
-      if (!target.classes[id]) {
-        target.classes[id] = { classId: id, name: data.name, exports: {} };
-      }
-      target.classes[id].exports[condition] = data.source;
-    }
-  }
-}
 
 /**
  * Base class for workflow builders. Provides common build logic for transforming
@@ -1145,8 +1103,9 @@ export const OPTIONS = handler;`;
 
     for (const [workflowId, data] of Object.entries(workflows)) {
       const { name, exports } = data;
-      // Look up graph by source file (use 'workflow' export) and function name
-      const source = exports.workflow;
+      // Look up graph by source file and function name
+      // Prefer 'workflow' export, fall back to 'default' if not available
+      const source = exports.workflow || exports.default;
       const graph = source
         ? graphs[source]?.[name]?.graph || { nodes: [], edges: [] }
         : { nodes: [], edges: [] };
