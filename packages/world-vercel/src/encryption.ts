@@ -9,6 +9,7 @@ type CryptoKey = webcrypto.CryptoKey;
 
 const ALGORITHM = 'AES-GCM';
 const KEY_LENGTH = 256;
+const KEY_BYTES = 32; // 256 bits = 32 bytes
 const NONCE_LENGTH = 12; // 96 bits for GCM
 const TAG_LENGTH = 128; // 128-bit auth tag
 const FORMAT_PREFIX = 'encr';
@@ -68,6 +69,13 @@ export function createEncryptor(
   config: VercelEncryptionConfig
 ): Required<Encryptor> {
   const { deploymentKey, projectId } = config;
+
+  // Validate key length - must be exactly 32 bytes for AES-256
+  if (deploymentKey.length !== KEY_BYTES) {
+    throw new Error(
+      `Invalid deployment key length: expected ${KEY_BYTES} bytes for AES-256, got ${deploymentKey.length} bytes`
+    );
+  }
 
   return {
     async encrypt(
