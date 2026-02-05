@@ -6,6 +6,7 @@ import { transformCode } from '@/lib/transform-action';
 import { CodeEditor } from './editor';
 
 const STORAGE_KEY = 'swc-playground-code';
+const MODULE_SPECIFIER_STORAGE_KEY = 'swc-playground-module-specifier';
 
 const DEFAULT_CODE = `
 import { sleep } from 'workflow';
@@ -28,6 +29,11 @@ function getStoredCode(): string {
   return localStorage.getItem(STORAGE_KEY) || DEFAULT_CODE;
 }
 
+function getStoredModuleSpecifier(): string {
+  if (typeof window === 'undefined') return '';
+  return localStorage.getItem(MODULE_SPECIFIER_STORAGE_KEY) || '';
+}
+
 type ViewMode = 'workflow' | 'step' | 'client';
 
 interface CompilationResult {
@@ -37,10 +43,15 @@ interface CompilationResult {
 
 interface SwcPlaygroundProps {
   pluginVersion?: string;
+  gitCommitSha?: string;
 }
 
-export function SwcPlayground({ pluginVersion }: SwcPlaygroundProps) {
+export function SwcPlayground({
+  pluginVersion,
+  gitCommitSha,
+}: SwcPlaygroundProps) {
   const [code, setCode] = useState(DEFAULT_CODE);
+  const [moduleSpecifier, setModuleSpecifier] = useState('');
   const [isHydrated, setIsHydrated] = useState(false);
   const [results, setResults] = useState<Record<ViewMode, CompilationResult>>({
     workflow: { code: '' },
@@ -49,10 +60,12 @@ export function SwcPlayground({ pluginVersion }: SwcPlaygroundProps) {
   });
   const [isCompiling, setIsCompiling] = useState(false);
 
-  // Hydrate code from localStorage on mount
+  // Hydrate code and moduleSpecifier from localStorage on mount
   useEffect(() => {
     const stored = getStoredCode();
     setCode(stored);
+    const storedModuleSpecifier = getStoredModuleSpecifier();
+    setModuleSpecifier(storedModuleSpecifier);
     setIsHydrated(true);
   }, []);
 
@@ -67,24 +80,42 @@ export function SwcPlayground({ pluginVersion }: SwcPlaygroundProps) {
     }
   }, [code, isHydrated]);
 
-  const compile = useCallback(async (sourceCode: string) => {
-    setIsCompiling(true);
-
-    try {
-      const transformResults = await transformCode(sourceCode);
-      setResults(transformResults);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Server error';
-      // Set error state for all modes
-      setResults({
-        workflow: { code: '', error: errorMessage },
-        step: { code: '', error: errorMessage },
-        client: { code: '', error: errorMessage },
-      });
-    } finally {
-      setIsCompiling(false);
+  // Save moduleSpecifier to localStorage when it changes
+  useEffect(() => {
+    if (isHydrated) {
+      try {
+        localStorage.setItem(MODULE_SPECIFIER_STORAGE_KEY, moduleSpecifier);
+      } catch {
+        // localStorage may be disabled or full
+      }
     }
-  }, []);
+  }, [moduleSpecifier, isHydrated]);
+
+  const compile = useCallback(
+    async (sourceCode: string) => {
+      setIsCompiling(true);
+
+      try {
+        const transformResults = await transformCode(
+          sourceCode,
+          moduleSpecifier || undefined
+        );
+        setResults(transformResults);
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err.message : 'Server error';
+        // Set error state for all modes
+        setResults({
+          workflow: { code: '', error: errorMessage },
+          step: { code: '', error: errorMessage },
+          client: { code: '', error: errorMessage },
+        });
+      } finally {
+        setIsCompiling(false);
+      }
+    },
+    [moduleSpecifier]
+  );
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -95,7 +126,7 @@ export function SwcPlayground({ pluginVersion }: SwcPlaygroundProps) {
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
-      <header className="flex items-center px-6 py-3 border-b bg-card">
+      <header className="flex items-center justify-between px-6 py-3 border-b bg-card">
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-bold">
             Workflow DevKit Compiler Playground
@@ -103,6 +134,32 @@ export function SwcPlayground({ pluginVersion }: SwcPlaygroundProps) {
           <span className="text-xs px-2 py-1 bg-muted rounded text-muted-foreground">
             @workflow/swc-plugin{pluginVersion ? `@${pluginVersion}` : ''}
           </span>
+          {gitCommitSha && (
+            <a
+              href={`https://github.com/vercel/workflow/commit/${gitCommitSha}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs px-2 py-1 bg-muted rounded text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {gitCommitSha.slice(0, 7)}
+            </a>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <label
+            htmlFor="module-specifier"
+            className="text-sm text-muted-foreground"
+          >
+            Module Specifier:
+          </label>
+          <input
+            id="module-specifier"
+            type="text"
+            value={moduleSpecifier}
+            onChange={(e) => setModuleSpecifier(e.target.value)}
+            placeholder="e.g., my-package@1.0.0"
+            className="text-sm px-3 py-1 bg-muted rounded border border-input focus:outline-none focus:ring-2 focus:ring-ring w-64"
+          />
         </div>
       </header>
 
