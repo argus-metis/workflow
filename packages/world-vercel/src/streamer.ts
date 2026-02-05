@@ -1,3 +1,4 @@
+import { isRateLimitError, withRetry } from '@workflow/utils';
 import type { Streamer } from '@workflow/world';
 import { type APIConfig, getHttpConfig, type HttpConfig } from './utils.js';
 
@@ -51,6 +52,38 @@ export function encodeMultiChunks(chunks: (string | Uint8Array)[]): Uint8Array {
   return result;
 }
 
+/**
+ * Retry configuration for streamer fetch calls.
+ * Uses the same settings as makeRequest for consistency.
+ */
+const STREAMER_RETRY_OPTIONS = {
+  maxRetries: 3,
+  shouldRetry: (error: unknown) => {
+    // Check for rate limit errors (429)
+    if (isRateLimitError(error)) return true;
+    // Also retry on fetch errors that indicate a 429 response
+    if (error instanceof Error && error.message.includes('429')) return true;
+    return false;
+  },
+};
+
+/**
+ * Wrapper for fetch that throws on non-ok responses with status info.
+ * This allows the retry logic to properly detect 429 errors.
+ */
+async function fetchWithErrorHandling(
+  url: URL,
+  init: RequestInit & { duplex?: 'half' }
+): Promise<Response> {
+  const res = await fetch(url, init);
+  if (!res.ok) {
+    const error = new Error(`HTTP ${res.status}: ${res.statusText}`);
+    (error as any).status = res.status;
+    throw error;
+  }
+  return res;
+}
+
 export function createStreamer(config?: APIConfig): Streamer {
   return {
     async writeToStream(
@@ -62,12 +95,19 @@ export function createStreamer(config?: APIConfig): Streamer {
       const resolvedRunId = await runId;
 
       const httpConfig = await getHttpConfig(config);
-      await fetch(getStreamUrl(name, resolvedRunId, httpConfig), {
-        method: 'PUT',
-        body: chunk,
-        headers: httpConfig.headers,
-        duplex: 'half',
-      });
+      await withRetry(
+        () =>
+          fetchWithErrorHandling(
+            getStreamUrl(name, resolvedRunId, httpConfig),
+            {
+              method: 'PUT',
+              body: chunk,
+              headers: httpConfig.headers,
+              duplex: 'half',
+            }
+          ),
+        STREAMER_RETRY_OPTIONS
+      );
     },
 
     async writeToStreamMulti(
@@ -86,12 +126,19 @@ export function createStreamer(config?: APIConfig): Streamer {
       httpConfig.headers.set('X-Stream-Multi', 'true');
 
       const body = encodeMultiChunks(chunks);
-      await fetch(getStreamUrl(name, resolvedRunId, httpConfig), {
-        method: 'PUT',
-        body,
-        headers: httpConfig.headers,
-        duplex: 'half',
-      });
+      await withRetry(
+        () =>
+          fetchWithErrorHandling(
+            getStreamUrl(name, resolvedRunId, httpConfig),
+            {
+              method: 'PUT',
+              body,
+              headers: httpConfig.headers,
+              duplex: 'half',
+            }
+          ),
+        STREAMER_RETRY_OPTIONS
+      );
     },
 
     async closeStream(name: string, runId: string | Promise<string>) {
@@ -100,10 +147,17 @@ export function createStreamer(config?: APIConfig): Streamer {
 
       const httpConfig = await getHttpConfig(config);
       httpConfig.headers.set('X-Stream-Done', 'true');
-      await fetch(getStreamUrl(name, resolvedRunId, httpConfig), {
-        method: 'PUT',
-        headers: httpConfig.headers,
-      });
+      await withRetry(
+        () =>
+          fetchWithErrorHandling(
+            getStreamUrl(name, resolvedRunId, httpConfig),
+            {
+              method: 'PUT',
+              headers: httpConfig.headers,
+            }
+          ),
+        STREAMER_RETRY_OPTIONS
+      );
     },
 
     async readFromStream(name: string, startIndex?: number) {
@@ -112,16 +166,20 @@ export function createStreamer(config?: APIConfig): Streamer {
       if (typeof startIndex === 'number') {
         url.searchParams.set('startIndex', String(startIndex));
       }
-      const res = await fetch(url, { headers: httpConfig.headers });
-      if (!res.ok) throw new Error(`Failed to fetch stream: ${res.status}`);
+      const res = await withRetry(
+        () => fetchWithErrorHandling(url, { headers: httpConfig.headers }),
+        STREAMER_RETRY_OPTIONS
+      );
       return res.body as ReadableStream<Uint8Array>;
     },
 
     async listStreamsByRunId(runId: string) {
       const httpConfig = await getHttpConfig(config);
       const url = new URL(`${httpConfig.baseUrl}/v2/runs/${runId}/streams`);
-      const res = await fetch(url, { headers: httpConfig.headers });
-      if (!res.ok) throw new Error(`Failed to list streams: ${res.status}`);
+      const res = await withRetry(
+        () => fetchWithErrorHandling(url, { headers: httpConfig.headers }),
+        STREAMER_RETRY_OPTIONS
+      );
       return (await res.json()) as string[];
     },
   };

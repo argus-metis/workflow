@@ -5,15 +5,16 @@ import { WorkflowAPIError } from '@workflow/errors';
 import { type StructuredError, StructuredErrorSchema } from '@workflow/world';
 import { decode, encode } from 'cbor-x';
 import type { z } from 'zod';
+import { isRateLimitError, withRetry } from './retry/retry.js';
 import {
-  trace,
+  ErrorType,
   getSpanKind,
   HttpRequestMethod,
   HttpResponseStatusCode,
-  UrlFull,
   ServerAddress,
   ServerPort,
-  ErrorType,
+  trace,
+  UrlFull,
   WorldParseFormat,
 } from './telemetry.js';
 import { version } from './version.js';
@@ -258,42 +259,67 @@ export async function makeRequest<T>({
         body = encode(data);
       }
 
-      const request = new Request(url, {
-        ...options,
-        body,
-        headers,
-      });
-      const response = await fetch(request);
+      // Wrap the fetch call with retry logic for 429 errors
+      const response = await withRetry(
+        async () => {
+          const request = new Request(url, {
+            ...options,
+            body,
+            headers,
+          });
+          const res = await fetch(request);
 
-      span?.setAttributes({
-        ...HttpResponseStatusCode(response.status),
-      });
+          span?.setAttributes({
+            ...HttpResponseStatusCode(res.status),
+          });
 
-      if (!response.ok) {
-        const errorData: { message?: string; code?: string } =
-          await parseResponseBody(response)
-            .then((r) => r.data as { message?: string; code?: string })
-            .catch(() => ({}));
-        if (process.env.DEBUG === '1') {
-          const stringifiedHeaders = Array.from(headers.entries())
-            .map(([key, value]: [string, string]) => `-H "${key}: ${value}"`)
-            .join(' ');
-          console.error(
-            `Failed to fetch, reproduce with:\ncurl -X ${request.method} ${stringifiedHeaders} "${url}"`
-          );
+          if (!res.ok) {
+            const errorData: { message?: string; code?: string } =
+              await parseResponseBody(res)
+                .then((r) => r.data as { message?: string; code?: string })
+                .catch(() => ({}));
+            if (process.env.DEBUG === '1') {
+              const stringifiedHeaders = Array.from(headers.entries())
+                .map(
+                  ([key, value]: [string, string]) => `-H "${key}: ${value}"`
+                )
+                .join(' ');
+              console.error(
+                `Failed to fetch, reproduce with:\ncurl -X ${request.method} ${stringifiedHeaders} "${url}"`
+              );
+            }
+            const error = new WorkflowAPIError(
+              errorData.message ||
+                `${request.method} ${endpoint} -> HTTP ${res.status}: ${res.statusText}`,
+              { url, status: res.status, code: errorData.code }
+            );
+            // Record error attributes per OTEL conventions
+            span?.setAttributes({
+              ...ErrorType(errorData.code || `HTTP ${res.status}`),
+            });
+            span?.recordException?.(error);
+            throw error;
+          }
+
+          return res;
+        },
+        {
+          maxRetries: 3,
+          shouldRetry: isRateLimitError,
+          getRetryAfter: (error) => {
+            // Check for Retry-After header value stored in error
+            if (
+              error &&
+              typeof error === 'object' &&
+              'retryAfter' in error &&
+              typeof (error as { retryAfter?: number }).retryAfter === 'number'
+            ) {
+              return (error as { retryAfter: number }).retryAfter;
+            }
+            return undefined;
+          },
         }
-        const error = new WorkflowAPIError(
-          errorData.message ||
-            `${request.method} ${endpoint} -> HTTP ${response.status}: ${response.statusText}`,
-          { url, status: response.status, code: errorData.code }
-        );
-        // Record error attributes per OTEL conventions
-        span?.setAttributes({
-          ...ErrorType(errorData.code || `HTTP ${response.status}`),
-        });
-        span?.recordException?.(error);
-        throw error;
-      }
+      );
 
       // Parse the response body (CBOR or JSON) with tracing
       let parseResult: ParseResult;
@@ -311,7 +337,7 @@ export async function makeRequest<T>({
       } catch (error) {
         const contentType = response.headers.get('Content-Type') || 'unknown';
         throw new WorkflowAPIError(
-          `Failed to parse response body for ${request.method} ${endpoint} (Content-Type: ${contentType}):\n\n${error}`,
+          `Failed to parse response body for ${method} ${endpoint} (Content-Type: ${contentType}):\n\n${error}`,
           { url, cause: error }
         );
       }
@@ -321,7 +347,7 @@ export async function makeRequest<T>({
         const validationResult = schema.safeParse(parseResult.data);
         if (!validationResult.success) {
           throw new WorkflowAPIError(
-            `Schema validation failed for ${request.method} ${endpoint}:\n\n${validationResult.error}\n\nResponse context: ${parseResult.getDebugContext()}`,
+            `Schema validation failed for ${method} ${endpoint}:\n\n${validationResult.error}\n\nResponse context: ${parseResult.getDebugContext()}`,
             { url, cause: validationResult.error }
           );
         }
