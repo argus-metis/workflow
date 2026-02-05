@@ -25,7 +25,12 @@ export async function POST(req: Request) {
     // Args from body (binary serialized data)
     const buffer = await req.arrayBuffer();
     if (buffer.byteLength > 0) {
-      args = hydrateWorkflowArguments(new Uint8Array(buffer), globalThis);
+      args = (await hydrateWorkflowArguments(
+        new Uint8Array(buffer),
+        '', // No runId - not decrypting here
+        {}, // No encryptor
+        globalThis
+      )) as any[];
     } else {
       args = [42];
     }

@@ -105,7 +105,12 @@ export class AppController {
       });
     } else if (Buffer.isBuffer(bodyData) && bodyData.byteLength > 0) {
       // Body is binary serialized data (application/octet-stream)
-      args = hydrateWorkflowArguments(new Uint8Array(bodyData), globalThis);
+      args = (await hydrateWorkflowArguments(
+        new Uint8Array(bodyData),
+        '', // No runId - not decrypting here
+        {}, // No encryptor
+        globalThis
+      )) as any[];
     } else {
       args = [42];
     }

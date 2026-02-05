@@ -148,11 +148,17 @@ export function createUseStep(ctx: WorkflowOrchestratorContext) {
             ctx.runId,
             ctx.world,
             ctx.globalThis
-          ).then((hydratedResult) => {
-            setTimeout(() => {
-              resolve(hydratedResult as Result);
-            }, 0);
-          });
+          )
+            .then((hydratedResult) => {
+              setTimeout(() => {
+                resolve(hydratedResult as Result);
+              }, 0);
+            })
+            .catch((error) => {
+              setTimeout(() => {
+                reject(error);
+              }, 0);
+            });
           return EventConsumerResult.Finished;
         }
 

@@ -100,9 +100,17 @@ export function createCreateHook(ctx: WorkflowOrchestratorContext) {
               ctx.runId,
               ctx.world,
               ctx.globalThis
-            ).then((payload) => {
-              next.resolve(payload as T);
-            });
+            )
+              .then((payload) => {
+                next.resolve(payload as T);
+              })
+              .catch((error) => {
+                ctx.onWorkflowError(
+                  error instanceof Error
+                    ? error
+                    : new WorkflowRuntimeError(String(error))
+                );
+              });
           }
         } else {
           payloadsQueue.push(event);
@@ -148,9 +156,13 @@ export function createCreateHook(ctx: WorkflowOrchestratorContext) {
             ctx.runId,
             ctx.world,
             ctx.globalThis
-          ).then((payload) => {
-            resolvers.resolve(payload as T);
-          });
+          )
+            .then((payload) => {
+              resolvers.resolve(payload as T);
+            })
+            .catch((error) => {
+              resolvers.reject(error);
+            });
           return resolvers.promise;
         }
       }

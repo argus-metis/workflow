@@ -120,7 +120,12 @@ server.post('/api/trigger', async (req: any, reply) => {
     // Args from body (binary serialized data)
     const body = req.body;
     if (Buffer.isBuffer(body) && body.byteLength > 0) {
-      args = hydrateWorkflowArguments(new Uint8Array(body), globalThis);
+      args = (await hydrateWorkflowArguments(
+        new Uint8Array(body),
+        '', // No runId - not decrypting here
+        {}, // No encryptor
+        globalThis
+      )) as any[];
     } else {
       args = [42];
     }
