@@ -1,4 +1,4 @@
-import { isRateLimitError, withRetry } from '@workflow/utils';
+import { isRateLimitError, withRetry } from './retry/retry.js';
 import type { Streamer } from '@workflow/world';
 import { type APIConfig, getHttpConfig, type HttpConfig } from './utils.js';
 
