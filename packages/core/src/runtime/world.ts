@@ -1,10 +1,8 @@
 import { createRequire } from 'node:module';
-import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { World } from '@workflow/world';
 import { createLocalWorld } from '@workflow/world-local';
 import { createVercelWorld } from '@workflow/world-vercel';
-
-const require = createRequire(join(process.cwd(), 'index.js'));
 
 const WorldCache = Symbol.for('@workflow/world//cache');
 const StubbedWorldCache = Symbol.for('@workflow/world//stubbedCache');
@@ -22,12 +20,35 @@ function defaultWorld(): 'vercel' | 'local' {
   return 'local';
 }
 
+const dynamicImport = new Function('specifier', 'return import(specifier)') as (
+  specifier: string
+) => Promise<any>;
+
+function resolveModulePath(specifier: string): string {
+  if (
+    specifier.startsWith('file://') ||
+    specifier.startsWith('/') ||
+    specifier.startsWith('./') ||
+    specifier.startsWith('../')
+  ) {
+    return specifier;
+  }
+  try {
+    const require = createRequire(
+      pathToFileURL(process.cwd() + '/package.json').href
+    );
+    return pathToFileURL(require.resolve(specifier)).href;
+  } catch {
+    return specifier;
+  }
+}
+
 /**
  * Create a new world instance based on environment variables.
  * WORKFLOW_TARGET_WORLD is used to determine the target world.
  * All other environment variables are specific to the target world
  */
-export const createWorld = (): World => {
+export const createWorld = async (): Promise<World> => {
   const targetWorld = process.env.WORKFLOW_TARGET_WORLD || defaultWorld();
 
   if (targetWorld === 'vercel') {
@@ -47,7 +68,8 @@ export const createWorld = (): World => {
     });
   }
 
-  const mod = require(targetWorld);
+  const resolvedPath = resolveModulePath(targetWorld);
+  const mod = await dynamicImport(resolvedPath);
   if (typeof mod === 'function') {
     return mod() as World;
   } else if (typeof mod.default === 'function') {
@@ -61,6 +83,8 @@ export const createWorld = (): World => {
   );
 };
 
+export type WorldHandlers = Pick<World, 'createQueueHandler'>;
+
 /**
  * Some functions from the world are needed at build time, but we do NOT want
  * to cache the world in those instances for general use, since we don't have
@@ -70,23 +94,23 @@ export const createWorld = (): World => {
  * Once we migrate to a file-based configuration (workflow.config.ts), we should
  * be able to re-combine getWorld and getWorldHandlers into one singleton.
  */
-export const getWorldHandlers = (): Pick<World, 'createQueueHandler'> => {
+export const getWorldHandlers = async (): Promise<WorldHandlers> => {
   if (globalSymbols[StubbedWorldCache]) {
     return globalSymbols[StubbedWorldCache];
   }
-  const _world = createWorld();
+  const _world = await createWorld();
   globalSymbols[StubbedWorldCache] = _world;
   return {
     createQueueHandler: _world.createQueueHandler,
   };
 };
 
-export const getWorld = (): World => {
+export const getWorld = async (): Promise<World> => {
   if (globalSymbols[WorldCache]) {
     return globalSymbols[WorldCache];
   }
-  globalSymbols[WorldCache] = createWorld();
-  return globalSymbols[WorldCache];
+  globalSymbols[WorldCache] = await createWorld();
+  return Promise.resolve(globalSymbols[WorldCache]);
 };
 
 /**

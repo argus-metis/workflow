@@ -65,7 +65,7 @@ export async function handleHealthCheckMessage(
   healthCheck: HealthCheckPayload,
   endpoint: 'workflow' | 'step'
 ): Promise<void> {
-  const world = getWorld();
+  const world = await getWorld();
   const streamName = getHealthCheckStreamName(healthCheck.correlationId);
   const response = JSON.stringify({
     healthy: true,
@@ -259,7 +259,7 @@ export async function getAllWorkflowRunEvents(runId: string): Promise<Event[]> {
     let hasMore = true;
     let pagesLoaded = 0;
 
-    const world = getWorld();
+    const world = await getWorld();
     while (hasMore) {
       // TODO: we're currently loading all the data with resolveRef behaviour. We need to update this
       // to lazyload the data from the world instead so that we can optimize and make the event log loading

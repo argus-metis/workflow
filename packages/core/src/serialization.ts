@@ -252,7 +252,7 @@ export class WorkflowServerReadableStream extends ReadableStream<Uint8Array> {
       pull: async (controller) => {
         let reader = this.#reader;
         if (!reader) {
-          const world = getWorld();
+          const world = await getWorld();
           const stream = await world.readFromStream(name, startIndex);
           reader = this.#reader = stream.getReader();
         }
@@ -293,7 +293,6 @@ export class WorkflowServerWritableStream extends WritableStream<Uint8Array> {
     if (typeof name !== 'string' || name.length === 0) {
       throw new Error(`"name" is required, got "${name}"`);
     }
-    const world = getWorld();
 
     // Buffering state for batched writes
     let buffer: Uint8Array[] = [];
@@ -314,6 +313,7 @@ export class WorkflowServerWritableStream extends WritableStream<Uint8Array> {
 
       const _runId = await runId;
 
+      const world = await getWorld();
       // Use writeToStreamMulti if available for batch writes
       if (
         typeof world.writeToStreamMulti === 'function' &&
@@ -362,6 +362,7 @@ export class WorkflowServerWritableStream extends WritableStream<Uint8Array> {
         await flush();
 
         const _runId = await runId;
+        const world = await getWorld();
         await world.closeStream(name, _runId);
       },
       abort() {

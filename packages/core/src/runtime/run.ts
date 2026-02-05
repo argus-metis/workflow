@@ -5,8 +5,8 @@ import {
 } from '@workflow/errors';
 import {
   SPEC_VERSION_CURRENT,
-  type World,
   type WorkflowRunStatus,
+  type World,
 } from '@workflow/world';
 import {
   getExternalRevivers,
@@ -55,18 +55,19 @@ export class Run<TResult> {
    * The world object.
    * @internal
    */
-  private world: World;
+  private worldPromise: Promise<World>;
 
   constructor(runId: string) {
     this.runId = runId;
-    this.world = getWorld();
+    this.worldPromise = getWorld();
   }
 
   /**
    * Cancels the workflow run.
    */
   async cancel(): Promise<void> {
-    await this.world.events.create(this.runId, {
+    const world = await this.worldPromise;
+    await world.events.create(this.runId, {
       eventType: 'run_cancelled',
       specVersion: SPEC_VERSION_CURRENT,
     });
@@ -76,7 +77,9 @@ export class Run<TResult> {
    * The status of the workflow run.
    */
   get status(): Promise<WorkflowRunStatus> {
-    return this.world.runs.get(this.runId).then((run) => run.status);
+    return this.worldPromise.then((world) =>
+      world.runs.get(this.runId).then((run) => run.status)
+    );
   }
 
   /**
@@ -91,14 +94,18 @@ export class Run<TResult> {
    * The name of the workflow.
    */
   get workflowName(): Promise<string> {
-    return this.world.runs.get(this.runId).then((run) => run.workflowName);
+    return this.worldPromise.then((world) =>
+      world.runs.get(this.runId).then((run) => run.workflowName)
+    );
   }
 
   /**
    * The timestamp when the workflow run was created.
    */
   get createdAt(): Promise<Date> {
-    return this.world.runs.get(this.runId).then((run) => run.createdAt);
+    return this.worldPromise.then((world) =>
+      world.runs.get(this.runId).then((run) => run.createdAt)
+    );
   }
 
   /**
@@ -106,7 +113,9 @@ export class Run<TResult> {
    * Returns undefined if the workflow has not started yet.
    */
   get startedAt(): Promise<Date | undefined> {
-    return this.world.runs.get(this.runId).then((run) => run.startedAt);
+    return this.worldPromise.then((world) =>
+      world.runs.get(this.runId).then((run) => run.startedAt)
+    );
   }
 
   /**
@@ -114,7 +123,9 @@ export class Run<TResult> {
    * Returns undefined if the workflow has not completed yet.
    */
   get completedAt(): Promise<Date | undefined> {
-    return this.world.runs.get(this.runId).then((run) => run.completedAt);
+    return this.worldPromise.then((world) =>
+      world.runs.get(this.runId).then((run) => run.completedAt)
+    );
   }
 
   /**
@@ -148,9 +159,10 @@ export class Run<TResult> {
    * @returns The workflow return value.
    */
   private async pollReturnValue(): Promise<TResult> {
+    const world = await this.worldPromise;
     while (true) {
       try {
-        const run = await this.world.runs.get(this.runId);
+        const run = await world.runs.get(this.runId);
 
         if (run.status === 'completed') {
           return hydrateWorkflowReturnValue(run.output, [], this.runId);

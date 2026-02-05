@@ -24,7 +24,7 @@ import { getWorld } from './world.js';
  * @param token - The unique token identifying the hook
  */
 export async function getHookByToken(token: string): Promise<Hook> {
-  const world = getWorld();
+  const world = await getWorld();
   const hook = await world.hooks.getByToken(token);
   if (typeof hook.metadata !== 'undefined') {
     hook.metadata = hydrateStepArguments(hook.metadata as any, [], hook.runId);
@@ -67,7 +67,7 @@ export async function resumeHook<T = any>(
 ): Promise<Hook> {
   return await waitedUntil(() => {
     return trace('hook.resume', async (span) => {
-      const world = getWorld();
+      const world = await getWorld();
 
       try {
         const hook =
