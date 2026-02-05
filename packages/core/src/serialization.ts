@@ -1,5 +1,6 @@
 import { WorkflowRuntimeError } from '@workflow/errors';
 import { WORKFLOW_DESERIALIZE, WORKFLOW_SERIALIZE } from '@workflow/serde';
+import type { EncryptionContext, Encryptor } from '@workflow/world';
 import { DevalueError, parse, stringify, unflatten } from 'devalue';
 import { monotonicFactory } from 'ulid';
 import { getSerializationClass } from './class-serialization.js';
@@ -52,6 +53,8 @@ import {
 export const SerializationFormat = {
   /** devalue stringify/parse with TextEncoder/TextDecoder */
   DEVALUE_V1: 'devl',
+  /** Encrypted payload (inner payload has its own format prefix) */
+  ENCRYPTED: 'encr',
 } as const;
 
 export type SerializationFormatType =
@@ -92,6 +95,38 @@ export function encodeWithFormatPrefix(
   result.set(prefixBytes, 0);
   result.set(payload, FORMAT_PREFIX_LENGTH);
   return result;
+}
+
+/**
+ * Peek at the format prefix without consuming it.
+ * Useful for checking if data is encrypted before deciding how to process it.
+ *
+ * @param data - The format-prefixed data
+ * @returns The format identifier, or null if data is legacy/non-binary
+ */
+export function peekFormatPrefix(
+  data: Uint8Array | unknown
+): SerializationFormatType | null {
+  if (!(data instanceof Uint8Array) || data.length < FORMAT_PREFIX_LENGTH) {
+    return null;
+  }
+  const prefixBytes = data.subarray(0, FORMAT_PREFIX_LENGTH);
+  const format = formatDecoder.decode(prefixBytes);
+  const knownFormats = Object.values(SerializationFormat) as string[];
+  if (!knownFormats.includes(format)) {
+    return null;
+  }
+  return format as SerializationFormatType;
+}
+
+/**
+ * Check if data is encrypted (has 'encr' format prefix).
+ *
+ * @param data - The format-prefixed data
+ * @returns true if data has the encrypted format prefix
+ */
+export function isEncrypted(data: Uint8Array | unknown): boolean {
+  return peekFormatPrefix(data) === SerializationFormat.ENCRYPTED;
 }
 
 /**
@@ -238,10 +273,70 @@ export function getDeserializeStream(
   return stream;
 }
 
+/**
+ * Create a transform stream that encrypts each chunk.
+ * Used to encrypt stream data before writing to storage.
+ *
+ * @param encryptor - Encryptor instance with encrypt function
+ * @param runId - Run ID for encryption context
+ * @returns TransformStream that encrypts Uint8Array chunks
+ */
+export function getEncryptStream(
+  encryptor: Encryptor,
+  runId: string
+): TransformStream<Uint8Array, Uint8Array> {
+  return new TransformStream<Uint8Array, Uint8Array>({
+    async transform(chunk, controller) {
+      if (!encryptor.encrypt) {
+        // No encryption available, pass through unchanged
+        controller.enqueue(chunk);
+        return;
+      }
+
+      const encrypted = await encryptor.encrypt(chunk, { runId });
+      controller.enqueue(encrypted);
+    },
+  });
+}
+
+/**
+ * Create a transform stream that decrypts each chunk.
+ * Used to decrypt stream data read from storage.
+ *
+ * @param encryptor - Encryptor instance with decrypt function
+ * @param runId - Run ID for decryption context
+ * @returns TransformStream that decrypts Uint8Array chunks
+ */
+export function getDecryptStream(
+  encryptor: Encryptor,
+  runId: string
+): TransformStream<Uint8Array, Uint8Array> {
+  return new TransformStream<Uint8Array, Uint8Array>({
+    async transform(chunk, controller) {
+      // Check if chunk is encrypted
+      if (!isEncrypted(chunk)) {
+        // Not encrypted, pass through unchanged
+        controller.enqueue(chunk);
+        return;
+      }
+
+      if (!encryptor.decrypt) {
+        throw new WorkflowRuntimeError(
+          'Encrypted stream data encountered but Encryptor does not support decryption. ' +
+            'Ensure VERCEL_DEPLOYMENT_KEY is set or provide an Encryptor with decryption support.'
+        );
+      }
+
+      const decrypted = await encryptor.decrypt(chunk, { runId });
+      controller.enqueue(decrypted);
+    },
+  });
+}
+
 export class WorkflowServerReadableStream extends ReadableStream<Uint8Array> {
   #reader?: ReadableStreamDefaultReader<Uint8Array>;
 
-  constructor(name: string, startIndex?: number) {
+  constructor(name: string, startIndex?: number, runId?: string) {
     if (typeof name !== 'string' || name.length === 0) {
       throw new Error(`"name" is required, got "${name}"`);
     }
@@ -266,7 +361,22 @@ export class WorkflowServerReadableStream extends ReadableStream<Uint8Array> {
           this.#reader = undefined;
           controller.close();
         } else {
-          controller.enqueue(result.value);
+          // Decrypt chunk if encrypted and runId is provided
+          let chunk = result.value;
+          if (runId && isEncrypted(chunk)) {
+            const world = getWorld();
+            if (!world.decrypt) {
+              controller.error(
+                new WorkflowRuntimeError(
+                  'Encrypted stream data encountered but World does not support decryption. ' +
+                    'Ensure VERCEL_DEPLOYMENT_KEY is set.'
+                )
+              );
+              return;
+            }
+            chunk = await world.decrypt(chunk, { runId });
+          }
+          controller.enqueue(chunk);
         }
       },
     });
@@ -280,15 +390,9 @@ export class WorkflowServerReadableStream extends ReadableStream<Uint8Array> {
 const STREAM_FLUSH_INTERVAL_MS = 10;
 
 export class WorkflowServerWritableStream extends WritableStream<Uint8Array> {
-  constructor(name: string, runId: string | Promise<string>) {
-    // runId can be a promise, because we need a runID to write to a stream,
-    // but at class instantiation time, we might not have a run ID yet. This
-    // mainly happens when calling start() for a workflow with already-serialized
-    // arguments.
-    if (typeof runId !== 'string' && !(runId instanceof Promise)) {
-      throw new Error(
-        `"runId" must be a string or a promise that resolves to a string, got "${typeof runId}"`
-      );
+  constructor(name: string, runId: string) {
+    if (typeof runId !== 'string') {
+      throw new Error(`"runId" must be a string, got "${typeof runId}"`);
     }
     if (typeof name !== 'string' || name.length === 0) {
       throw new Error(`"name" is required, got "${name}"`);
@@ -310,20 +414,25 @@ export class WorkflowServerWritableStream extends WritableStream<Uint8Array> {
 
       // Copy chunks to flush, but don't clear buffer until write succeeds
       // This prevents data loss if the write operation fails
-      const chunksToFlush = buffer.slice();
+      let chunksToFlush = buffer.slice();
 
-      const _runId = await runId;
+      // Encrypt chunks if world supports encryption
+      if (world.encrypt) {
+        chunksToFlush = await Promise.all(
+          chunksToFlush.map((chunk) => world.encrypt!(chunk, { runId }))
+        );
+      }
 
       // Use writeToStreamMulti if available for batch writes
       if (
         typeof world.writeToStreamMulti === 'function' &&
         chunksToFlush.length > 1
       ) {
-        await world.writeToStreamMulti(name, _runId, chunksToFlush);
+        await world.writeToStreamMulti(name, runId, chunksToFlush);
       } else {
         // Fall back to sequential writes
         for (const chunk of chunksToFlush) {
-          await world.writeToStream(name, _runId, chunk);
+          await world.writeToStream(name, runId, chunk);
         }
       }
 
@@ -361,8 +470,7 @@ export class WorkflowServerWritableStream extends WritableStream<Uint8Array> {
         // Flush any remaining buffered chunks
         await flush();
 
-        const _runId = await runId;
-        await world.closeStream(name, _runId);
+        await world.closeStream(name, runId);
       },
       abort() {
         // Clean up timer to prevent leaks
@@ -620,7 +728,7 @@ function getCommonReducers(global: Record<string, any> = globalThis) {
 export function getExternalReducers(
   global: Record<string, any> = globalThis,
   ops: Promise<void>[],
-  runId: string | Promise<string>
+  runId: string
 ): Reducers {
   return {
     ...getCommonReducers(global),
@@ -661,7 +769,7 @@ export function getExternalReducers(
       const streamId = ((global as any)[STABLE_ULID] || defaultUlid)();
       const name = `strm_${streamId}`;
 
-      const readable = new WorkflowServerReadableStream(name);
+      const readable = new WorkflowServerReadableStream(name, undefined, runId);
       ops.push(readable.pipeTo(value));
 
       return { name };
@@ -727,7 +835,7 @@ export function getWorkflowReducers(
 function getStepReducers(
   global: Record<string, any> = globalThis,
   ops: Promise<void>[],
-  runId: string | Promise<string>
+  runId: string
 ): Reducers {
   return {
     ...getCommonReducers(global),
@@ -747,12 +855,6 @@ function getStepReducers(
       let type = value[STREAM_TYPE_SYMBOL];
 
       if (!name) {
-        if (!runId) {
-          throw new Error(
-            'ReadableStream cannot be serialized without a valid runId'
-          );
-        }
-
         const streamId = ((global as any)[STABLE_ULID] || defaultUlid)();
         name = `strm_${streamId}`;
         type = getStreamType(value);
@@ -781,16 +883,10 @@ function getStepReducers(
 
       let name = value[STREAM_NAME_SYMBOL];
       if (!name) {
-        if (!runId) {
-          throw new Error(
-            'WritableStream cannot be serialized without a valid runId'
-          );
-        }
-
         const streamId = ((global as any)[STABLE_ULID] || defaultUlid)();
         name = `strm_${streamId}`;
         ops.push(
-          new WorkflowServerReadableStream(name)
+          new WorkflowServerReadableStream(name, undefined, runId)
             .pipeThrough(
               getDeserializeStream(getStepRevivers(global, ops, runId))
             )
@@ -979,7 +1075,7 @@ export function getCommonRevivers(global: Record<string, any> = globalThis) {
 export function getExternalRevivers(
   global: Record<string, any> = globalThis,
   ops: Promise<void>[],
-  runId: string | Promise<string>
+  runId: string
 ): Revivers {
   return {
     ...getCommonRevivers(global),
@@ -1013,7 +1109,8 @@ export function getExternalRevivers(
 
       const readable = new WorkflowServerReadableStream(
         value.name,
-        value.startIndex
+        value.startIndex,
+        runId
       );
       if (value.type === 'bytes') {
         // For byte streams, use flushable pipe with lock polling
@@ -1155,7 +1252,7 @@ export function getWorkflowRevivers(
 function getStepRevivers(
   global: Record<string, any> = globalThis,
   ops: Promise<void>[],
-  runId: string | Promise<string>
+  runId: string
 ): Revivers {
   return {
     ...getCommonRevivers(global),
@@ -1196,7 +1293,11 @@ function getStepRevivers(
         return response.body;
       }
 
-      const readable = new WorkflowServerReadableStream(value.name);
+      const readable = new WorkflowServerReadableStream(
+        value.name,
+        undefined,
+        runId
+      );
       if (value.type === 'bytes') {
         // For byte streams, use flushable pipe with lock polling
         const state = createFlushableState();
@@ -1234,12 +1335,6 @@ function getStepRevivers(
       }
     },
     WritableStream: (value) => {
-      if (!runId) {
-        throw new Error(
-          'WritableStream cannot be revived without a valid runId'
-        );
-      }
-
       const serialize = getSerializeStream(getStepReducers(global, ops, runId));
       const serverWritable = new WorkflowServerWritableStream(
         value.name,
@@ -1263,30 +1358,99 @@ function getStepRevivers(
   };
 }
 
+// ============================================================================
+// Encryption Helpers
+// ============================================================================
+
+/**
+ * Encrypt data if the world supports encryption.
+ * Returns original data if encryption is not available.
+ *
+ * @param data - Serialized data to encrypt
+ * @param world - World instance (may have encrypt function)
+ * @param context - Encryption context with runId
+ * @returns Encrypted data if encryption available, original data otherwise
+ */
+export async function maybeEncrypt(
+  data: Uint8Array,
+  encryptor: Encryptor,
+  context: EncryptionContext
+): Promise<Uint8Array> {
+  if (encryptor.encrypt) {
+    return encryptor.encrypt(data, context);
+  }
+  return data;
+}
+
+/**
+ * Decrypt data if it has the 'encr' prefix.
+ * Throws if encrypted but encryptor doesn't support decryption.
+ *
+ * @param data - Data that may be encrypted
+ * @param encryptor - Encryptor instance (may have decrypt function)
+ * @param context - Encryption context with runId
+ * @returns Decrypted data if encrypted, original data otherwise
+ */
+export async function maybeDecrypt(
+  data: Uint8Array | unknown,
+  encryptor: Encryptor,
+  context: EncryptionContext
+): Promise<Uint8Array | unknown> {
+  if (!(data instanceof Uint8Array)) {
+    return data;
+  }
+
+  if (isEncrypted(data)) {
+    if (!encryptor.decrypt) {
+      throw new WorkflowRuntimeError(
+        'Encrypted data encountered but Encryptor does not support decryption. ' +
+          'Ensure VERCEL_DEPLOYMENT_KEY is set or provide an Encryptor with decryption support.'
+      );
+    }
+    return encryptor.decrypt(data, context);
+  }
+
+  return data;
+}
+
+// ============================================================================
+// Dehydrate / Hydrate Functions
+// ============================================================================
+
 /**
  * Called from the `start()` function to serialize the workflow arguments
  * into a format that can be saved to the database and then hydrated from
  * within the workflow execution environment.
  *
- * @param value
- * @param global
- * @param runId
+ * @param value - The value to serialize
+ * @param runId - The workflow run ID (required for encryption context)
+ * @param world - World instance for encryption support
+ * @param ops - Promise array for stream operations
+ * @param global - Global object for serialization context
+ * @param v1Compat - Enable legacy v1 compatibility mode
  * @returns The dehydrated value as binary data (Uint8Array) with format prefix
  */
-export function dehydrateWorkflowArguments(
+export async function dehydrateWorkflowArguments(
   value: unknown,
-  ops: Promise<void>[],
-  runId: string | Promise<string>,
+  runId: string,
+  encryptor: Encryptor,
+  ops: Promise<void>[] = [],
   global: Record<string, any> = globalThis,
   v1Compat = false
-): Uint8Array | unknown {
+): Promise<Uint8Array | unknown> {
   try {
     const str = stringify(value, getExternalReducers(global, ops, runId));
     if (v1Compat) {
       return revive(str);
     }
     const payload = new TextEncoder().encode(str);
-    return encodeWithFormatPrefix(SerializationFormat.DEVALUE_V1, payload);
+    const serialized = encodeWithFormatPrefix(
+      SerializationFormat.DEVALUE_V1,
+      payload
+    ) as Uint8Array;
+
+    // Encrypt if world supports encryption
+    return maybeEncrypt(serialized, encryptor, { runId });
   } catch (error) {
     throw new WorkflowRuntimeError(
       formatSerializationError('workflow arguments', error),
@@ -1300,23 +1464,30 @@ export function dehydrateWorkflowArguments(
  * arguments from the database at the start of workflow execution.
  *
  * @param value - Binary serialized data (Uint8Array) with format prefix
- * @param global
- * @param extraRevivers
+ * @param runId - Run ID for decryption context
+ * @param world - World instance for decryption support
+ * @param global - Global object for deserialization context
+ * @param extraRevivers - Additional revivers for custom types
  * @returns The hydrated value
  */
-export function hydrateWorkflowArguments(
+export async function hydrateWorkflowArguments(
   value: Uint8Array | unknown,
+  runId: string,
+  encryptor: Encryptor,
   global: Record<string, any> = globalThis,
   extraRevivers: Record<string, (value: any) => any> = {}
-) {
-  if (!(value instanceof Uint8Array)) {
-    return unflatten(value as any[], {
+): Promise<unknown> {
+  // Decrypt if needed
+  const decrypted = await maybeDecrypt(value, encryptor, { runId });
+
+  if (!(decrypted instanceof Uint8Array)) {
+    return unflatten(decrypted as any[], {
       ...getWorkflowRevivers(global),
       ...extraRevivers,
     });
   }
 
-  const { format, payload } = decodeFormatPrefix(value);
+  const { format, payload } = decodeFormatPrefix(decrypted);
 
   if (format === SerializationFormat.DEVALUE_V1) {
     const str = new TextDecoder().decode(payload);
@@ -1334,22 +1505,28 @@ export function hydrateWorkflowArguments(
  * Called at the end of a completed workflow execution to serialize the
  * return value into a format that can be saved to the database.
  *
- * @param value
- * @param global
+ * @param value - The value to serialize
+ * @param runId - Run ID for encryption context
+ * @param world - World instance for encryption support
+ * @param global - Global object for serialization context
  * @returns The dehydrated value as binary data (Uint8Array) with format prefix
  */
-export function dehydrateWorkflowReturnValue(
+export async function dehydrateWorkflowReturnValue(
   value: unknown,
-  global: Record<string, any> = globalThis,
-  v1Compat = false
-): Uint8Array | unknown {
+  runId: string,
+  encryptor: Encryptor,
+  global: Record<string, any> = globalThis
+): Promise<Uint8Array | unknown> {
   try {
     const str = stringify(value, getWorkflowReducers(global));
-    if (v1Compat) {
-      return revive(str);
-    }
     const payload = new TextEncoder().encode(str);
-    return encodeWithFormatPrefix(SerializationFormat.DEVALUE_V1, payload);
+    const serialized = encodeWithFormatPrefix(
+      SerializationFormat.DEVALUE_V1,
+      payload
+    ) as Uint8Array;
+
+    // Encrypt if world supports encryption
+    return maybeEncrypt(serialized, encryptor, { runId });
   } catch (error) {
     throw new WorkflowRuntimeError(
       formatSerializationError('workflow return value', error),
@@ -1364,27 +1541,32 @@ export function dehydrateWorkflowReturnValue(
  * return value of a completed workflow run.
  *
  * @param value - Binary serialized data (Uint8Array) with format prefix
- * @param ops
- * @param global
- * @param extraRevivers
- * @param runId
+ * @param runId - Run ID for decryption context
+ * @param world - World instance for decryption support
+ * @param ops - Promise array for stream operations
+ * @param global - Global object for deserialization context
+ * @param extraRevivers - Additional revivers for custom types
  * @returns The hydrated return value, ready to be consumed by the client
  */
-export function hydrateWorkflowReturnValue(
+export async function hydrateWorkflowReturnValue(
   value: Uint8Array | unknown,
-  ops: Promise<void>[],
-  runId: string | Promise<string>,
+  runId: string,
+  encryptor: Encryptor,
+  ops: Promise<void>[] = [],
   global: Record<string, any> = globalThis,
   extraRevivers: Record<string, (value: any) => any> = {}
-) {
-  if (!(value instanceof Uint8Array)) {
-    return unflatten(value as any[], {
+): Promise<unknown> {
+  // Decrypt if needed
+  const decrypted = await maybeDecrypt(value, encryptor, { runId });
+
+  if (!(decrypted instanceof Uint8Array)) {
+    return unflatten(decrypted as any[], {
       ...getExternalRevivers(global, ops, runId),
       ...extraRevivers,
     });
   }
 
-  const { format, payload } = decodeFormatPrefix(value);
+  const { format, payload } = decodeFormatPrefix(decrypted);
 
   if (format === SerializationFormat.DEVALUE_V1) {
     const str = new TextDecoder().decode(payload);
@@ -1403,22 +1585,33 @@ export function hydrateWorkflowReturnValue(
  * Dehydrates values from within the workflow execution environment
  * into a format that can be saved to the database.
  *
- * @param value
- * @param global
+ * @param value - The value to serialize
+ * @param runId - Run ID for encryption context
+ * @param world - World instance for encryption support
+ * @param global - Global object for serialization context
+ * @param v1Compat - Enable legacy v1 compatibility mode
  * @returns The dehydrated value as binary data (Uint8Array) with format prefix
  */
-export function dehydrateStepArguments(
+export async function dehydrateStepArguments(
   value: unknown,
-  global: Record<string, any>,
+  runId: string,
+  encryptor: Encryptor,
+  global: Record<string, any> = globalThis,
   v1Compat = false
-): Uint8Array | unknown {
+): Promise<Uint8Array | unknown> {
   try {
     const str = stringify(value, getWorkflowReducers(global));
     if (v1Compat) {
       return revive(str);
     }
     const payload = new TextEncoder().encode(str);
-    return encodeWithFormatPrefix(SerializationFormat.DEVALUE_V1, payload);
+    const serialized = encodeWithFormatPrefix(
+      SerializationFormat.DEVALUE_V1,
+      payload
+    ) as Uint8Array;
+
+    // Encrypt if world supports encryption
+    return maybeEncrypt(serialized, encryptor, { runId });
   } catch (error) {
     throw new WorkflowRuntimeError(
       formatSerializationError('step arguments', error),
@@ -1432,27 +1625,32 @@ export function dehydrateStepArguments(
  * from the database at the start of the step execution.
  *
  * @param value - Binary serialized data (Uint8Array) with format prefix
- * @param ops
- * @param global
- * @param extraRevivers
- * @param runId
+ * @param runId - Run ID for decryption context
+ * @param world - World instance for decryption support
+ * @param ops - Promise array for stream operations
+ * @param global - Global object for deserialization context
+ * @param extraRevivers - Additional revivers for custom types
  * @returns The hydrated value, ready to be consumed by the step user-code function
  */
-export function hydrateStepArguments(
+export async function hydrateStepArguments(
   value: Uint8Array | unknown,
-  ops: Promise<any>[],
-  runId: string | Promise<string>,
+  runId: string,
+  encryptor: Encryptor,
+  ops: Promise<any>[] = [],
   global: Record<string, any> = globalThis,
   extraRevivers: Record<string, (value: any) => any> = {}
-) {
-  if (!(value instanceof Uint8Array)) {
-    return unflatten(value as any[], {
+): Promise<unknown> {
+  // Decrypt if needed
+  const decrypted = await maybeDecrypt(value, encryptor, { runId });
+
+  if (!(decrypted instanceof Uint8Array)) {
+    return unflatten(decrypted as any[], {
       ...getStepRevivers(global, ops, runId),
       ...extraRevivers,
     });
   }
 
-  const { format, payload } = decodeFormatPrefix(value);
+  const { format, payload } = decodeFormatPrefix(decrypted);
 
   if (format === SerializationFormat.DEVALUE_V1) {
     const str = new TextDecoder().decode(payload);
@@ -1471,26 +1669,35 @@ export function hydrateStepArguments(
  * Dehydrates values from within the step execution environment
  * into a format that can be saved to the database.
  *
- * @param value
- * @param ops
- * @param global
- * @param runId
+ * @param value - The value to serialize
+ * @param runId - Run ID for encryption context
+ * @param world - World instance for encryption support
+ * @param ops - Promise array for stream operations
+ * @param global - Global object for serialization context
+ * @param v1Compat - Enable legacy v1 compatibility mode
  * @returns The dehydrated value as binary data (Uint8Array) with format prefix
  */
-export function dehydrateStepReturnValue(
+export async function dehydrateStepReturnValue(
   value: unknown,
-  ops: Promise<any>[],
-  runId: string | Promise<string>,
+  runId: string,
+  encryptor: Encryptor,
+  ops: Promise<any>[] = [],
   global: Record<string, any> = globalThis,
   v1Compat = false
-): Uint8Array | unknown {
+): Promise<Uint8Array | unknown> {
   try {
     const str = stringify(value, getStepReducers(global, ops, runId));
     if (v1Compat) {
       return revive(str);
     }
     const payload = new TextEncoder().encode(str);
-    return encodeWithFormatPrefix(SerializationFormat.DEVALUE_V1, payload);
+    const serialized = encodeWithFormatPrefix(
+      SerializationFormat.DEVALUE_V1,
+      payload
+    ) as Uint8Array;
+
+    // Encrypt if world supports encryption
+    return maybeEncrypt(serialized, encryptor, { runId });
   } catch (error) {
     throw new WorkflowRuntimeError(
       formatSerializationError('step return value', error),
@@ -1504,23 +1711,30 @@ export function dehydrateStepReturnValue(
  * Hydrates the return value of a step from the database.
  *
  * @param value - Binary serialized data (Uint8Array) with format prefix
- * @param global
- * @param extraRevivers
+ * @param runId - Run ID for decryption context
+ * @param world - World instance for decryption support
+ * @param global - Global object for deserialization context
+ * @param extraRevivers - Additional revivers for custom types
  * @returns The hydrated return value of a step, ready to be consumed by the workflow handler
  */
-export function hydrateStepReturnValue(
+export async function hydrateStepReturnValue(
   value: Uint8Array | unknown,
+  runId: string,
+  encryptor: Encryptor,
   global: Record<string, any> = globalThis,
   extraRevivers: Record<string, (value: any) => any> = {}
-) {
-  if (!(value instanceof Uint8Array)) {
-    return unflatten(value as any[], {
+): Promise<unknown> {
+  // Decrypt if needed
+  const decrypted = await maybeDecrypt(value, encryptor, { runId });
+
+  if (!(decrypted instanceof Uint8Array)) {
+    return unflatten(decrypted as any[], {
       ...getWorkflowRevivers(global),
       ...extraRevivers,
     });
   }
 
-  const { format, payload } = decodeFormatPrefix(value);
+  const { format, payload } = decodeFormatPrefix(decrypted);
 
   if (format === SerializationFormat.DEVALUE_V1) {
     const str = new TextDecoder().decode(payload);

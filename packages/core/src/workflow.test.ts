@@ -1,14 +1,90 @@
 import { types } from 'node:util';
 import { WorkflowRuntimeError } from '@workflow/errors';
-import type { Event, WorkflowRun } from '@workflow/world';
+import type { Encryptor, Event, WorkflowRun, World } from '@workflow/world';
 import { assert, describe, expect, it } from 'vitest';
 import type { WorkflowSuspension } from './global.js';
 import {
-  dehydrateStepReturnValue,
-  dehydrateWorkflowArguments,
-  hydrateWorkflowReturnValue,
+  dehydrateStepReturnValue as _dehydrateStepReturnValue,
+  dehydrateWorkflowArguments as _dehydrateWorkflowArguments,
+  hydrateWorkflowReturnValue as _hydrateWorkflowReturnValue,
 } from './serialization.js';
-import { runWorkflow } from './workflow.js';
+import { runWorkflow as _runWorkflow } from './workflow.js';
+
+// =============================================================================
+// Test helpers for encryption-aware serialization
+// =============================================================================
+
+// Mock encryptor without encryption for tests
+const mockEncryptor: Encryptor = {};
+
+// Mock world for tests
+const mockWorld = {
+  queue: async () => ({ messageId: 'msg_test' }),
+  createQueueHandler: () => async () => new Response(),
+  readFromStorage: async () => new Uint8Array(),
+  writeToStorage: async () => {},
+  deleteFromStorage: async () => {},
+  readFromStream: async () => new ReadableStream(),
+  writeToStream: async () => {},
+  writeToStreamMulti: async () => {},
+  closeStream: async () => {},
+  getDeploymentId: async () => 'test-deployment',
+  events: {
+    create: async () => ({ run: null }),
+    list: async () => ({ data: [], cursor: null, hasMore: false, run: null }),
+  },
+} as unknown as World;
+
+const defaultRunId = 'wrun_123';
+
+// Sync wrapper for dehydrateWorkflowArguments (returns Promise, used in workflowRun.input)
+function dehydrateWorkflowArguments(
+  value: unknown,
+  ops: Promise<any>[] = [],
+  runId: string = defaultRunId
+): Promise<Uint8Array | unknown> {
+  return _dehydrateWorkflowArguments(value, runId, mockEncryptor, ops);
+}
+
+// Sync wrapper for dehydrateStepReturnValue (returns Promise)
+function dehydrateStepReturnValue(
+  value: unknown,
+  ops: Promise<any>[] = [],
+  runId: string = defaultRunId
+): Promise<Uint8Array | unknown> {
+  return _dehydrateStepReturnValue(value, runId, mockEncryptor, ops);
+}
+
+// Async wrapper for hydrateWorkflowReturnValue
+async function hydrateWorkflowReturnValue(
+  value: Uint8Array | unknown,
+  ops: Promise<any>[] = [],
+  runId: string = defaultRunId
+): Promise<unknown> {
+  return _hydrateWorkflowReturnValue(value, runId, mockEncryptor, ops);
+}
+
+// Type for workflow run with potentially Promise input (for test convenience)
+type TestWorkflowRun = Omit<WorkflowRun, 'input'> & {
+  input: unknown | Promise<unknown>;
+};
+
+// Wrapper that adds mockWorld as 4th argument and handles Promise input
+async function runWorkflow(
+  workflowCode: string,
+  workflowRun: TestWorkflowRun,
+  events: Event[]
+): Promise<Uint8Array | unknown> {
+  // Await the input if it's a Promise (from dehydrateWorkflowArguments)
+  const resolvedRun: WorkflowRun = {
+    ...workflowRun,
+    input: await workflowRun.input,
+    output: undefined,
+    error: undefined,
+    completedAt: undefined,
+  } as WorkflowRun;
+  return _runWorkflow(workflowCode, resolvedRun, events, mockWorld);
+}
 
 describe('runWorkflow', () => {
   const getWorkflowTransformCode = (workflowName?: string) =>
@@ -41,7 +117,9 @@ describe('runWorkflow', () => {
       const events: Event[] = [];
 
       const result = await runWorkflow(workflowCode, workflowRun, events);
-      expect(hydrateWorkflowReturnValue(result as any, ops)).toEqual('success');
+      expect(await hydrateWorkflowReturnValue(result as any, ops)).toEqual(
+        'success'
+      );
     });
 
     it('should execute workflow with arguments', async () => {
@@ -62,7 +140,7 @@ describe('runWorkflow', () => {
       const events: Event[] = [];
 
       const result = await runWorkflow(workflowCode, workflowRun, events);
-      expect(hydrateWorkflowReturnValue(result as any, ops)).toEqual(3);
+      expect(await hydrateWorkflowReturnValue(result as any, ops)).toEqual(3);
     });
 
     it('allow user code to handle user-defined errors', async () => {
@@ -88,7 +166,7 @@ describe('runWorkflow', () => {
 
       const events: Event[] = [];
 
-      const result = hydrateWorkflowReturnValue(
+      const result = await hydrateWorkflowReturnValue(
         (await runWorkflow(workflowCode, workflowRun, events)) as any,
         ops
       );
@@ -142,7 +220,7 @@ describe('runWorkflow', () => {
       workflowRun,
       events
     );
-    expect(hydrateWorkflowReturnValue(result as any, ops)).toEqual(3);
+    expect(await hydrateWorkflowReturnValue(result as any, ops)).toEqual(3);
   });
 
   // Test that timestamps update correctly as events are consumed
@@ -269,7 +347,7 @@ describe('runWorkflow', () => {
     // - After step 1 completes (at 2s), timestamp advances to step2_created (2.5s)
     // - After step 2 completes (at 4s), timestamp advances to step3_created (4.5s)
     // - After step 3 completes: 6s
-    expect(hydrateWorkflowReturnValue(result as any, ops)).toEqual([
+    expect(await hydrateWorkflowReturnValue(result as any, ops)).toEqual([
       new Date('2024-01-01T00:00:00.000Z'),
       1704067202500, // 2.5s (step2_created timestamp)
       1704067204500, // 4.5s (step3_created timestamp)
@@ -347,8 +425,8 @@ describe('runWorkflow', () => {
       ]);
 
       // The date should be the same
-      const date1 = hydrateWorkflowReturnValue(result1 as any, ops);
-      const date2 = hydrateWorkflowReturnValue(result2 as any, ops);
+      const date1 = await hydrateWorkflowReturnValue(result1 as any, ops);
+      const date2 = await hydrateWorkflowReturnValue(result2 as any, ops);
       expect(date1).toEqual(date2);
     }
   );
@@ -414,7 +492,9 @@ describe('runWorkflow', () => {
         workflowRun,
         events
       );
-      expect(hydrateWorkflowReturnValue(result as any, ops)).toEqual([3, 7]);
+      expect(await hydrateWorkflowReturnValue(result as any, ops)).toEqual([
+        3, 7,
+      ]);
     });
 
     it('should resolve `Promise.race()` steps that have `step_completed` events (first promise resolves first)', async () => {
@@ -477,7 +557,7 @@ describe('runWorkflow', () => {
         workflowRun,
         events
       );
-      expect(hydrateWorkflowReturnValue(result as any, ops)).toEqual(3);
+      expect(await hydrateWorkflowReturnValue(result as any, ops)).toEqual(3);
     });
 
     it('should resolve `Promise.race()` steps that have `step_completed` events (second promise resolves first)', async () => {
@@ -540,7 +620,7 @@ describe('runWorkflow', () => {
         workflowRun,
         events
       );
-      expect(hydrateWorkflowReturnValue(result as any, ops)).toEqual(7);
+      expect(await hydrateWorkflowReturnValue(result as any, ops)).toEqual(7);
     });
 
     it('should handle Promise.race with multiple concurrent steps completing out of order', async () => {
@@ -666,7 +746,7 @@ describe('runWorkflow', () => {
         workflowRun,
         events
       );
-      expect(hydrateWorkflowReturnValue(result as any, ops)).toEqual([
+      expect(await hydrateWorkflowReturnValue(result as any, ops)).toEqual([
         4, 3, 2, 1, 0,
       ]);
     });
@@ -1279,7 +1359,7 @@ describe('runWorkflow', () => {
         workflowRun,
         events
       );
-      expect(hydrateWorkflowReturnValue(result as any, ops)).toEqual(
+      expect(await hydrateWorkflowReturnValue(result as any, ops)).toEqual(
         'Hello from hook'
       );
     });
@@ -1337,7 +1417,7 @@ describe('runWorkflow', () => {
         workflowRun,
         events
       );
-      expect(hydrateWorkflowReturnValue(result as any, ops)).toEqual([
+      expect(await hydrateWorkflowReturnValue(result as any, ops)).toEqual([
         'First payload',
         'Second payload',
       ]);
@@ -1401,7 +1481,7 @@ describe('runWorkflow', () => {
         workflowRun,
         events
       );
-      expect(hydrateWorkflowReturnValue(result as any, ops)).toEqual([
+      expect(await hydrateWorkflowReturnValue(result as any, ops)).toEqual([
         { count: 1, status: 'active' },
         { count: 2, status: 'complete' },
       ]);
@@ -1453,7 +1533,7 @@ describe('runWorkflow', () => {
         workflowRun,
         events
       );
-      expect(hydrateWorkflowReturnValue(result as any, ops)).toEqual(100);
+      expect(await hydrateWorkflowReturnValue(result as any, ops)).toEqual(100);
     });
 
     it('should support multiple queued "hook_received" events with step events in between', async () => {
@@ -1526,7 +1606,7 @@ describe('runWorkflow', () => {
         workflowRun,
         events
       );
-      expect(hydrateWorkflowReturnValue(result as any, ops)).toEqual({
+      expect(await hydrateWorkflowReturnValue(result as any, ops)).toEqual({
         data1: 'first',
         stepResult: 42,
         data2: 'second',
@@ -1636,7 +1716,7 @@ describe('runWorkflow', () => {
         workflowRun,
         events
       );
-      expect(hydrateWorkflowReturnValue(result as any, ops)).toEqual({
+      expect(await hydrateWorkflowReturnValue(result as any, ops)).toEqual({
         token: 'my-custom-token',
         result: 'success',
       });
@@ -1763,13 +1843,13 @@ describe('runWorkflow', () => {
         workflowRun,
         events
       );
-      const res = hydrateWorkflowReturnValue(result as any, ops);
+      const res = await hydrateWorkflowReturnValue(result as any, ops);
       expect(res).toBeInstanceOf(Response);
-      expect(res.status).toEqual(201);
-      expect(res.body).toBeInstanceOf(ReadableStream);
+      expect((res as Response).status).toEqual(201);
+      expect((res as Response).body).toBeInstanceOf(ReadableStream);
 
       // Verify body can be consumed
-      const text = await res.text();
+      const text = await (res as Response).text();
       expect(text).toEqual('Hello, world!');
     });
 
@@ -1795,13 +1875,15 @@ describe('runWorkflow', () => {
         workflowRun,
         events
       );
-      const res = hydrateWorkflowReturnValue(result as any, ops);
+      const res = await hydrateWorkflowReturnValue(result as any, ops);
       expect(res).toBeInstanceOf(Response);
-      expect(res.status).toEqual(201);
-      expect(res.headers.get('content-type')).toEqual('application/json');
+      expect((res as Response).status).toEqual(201);
+      expect((res as Response).headers.get('content-type')).toEqual(
+        'application/json'
+      );
 
       // Verify body can be parsed as JSON
-      const json = await res.json();
+      const json = await (res as Response).json();
       expect(json).toEqual({ message: 'success', count: 42 });
     });
 
@@ -1830,7 +1912,7 @@ describe('runWorkflow', () => {
         workflowRun,
         events
       );
-      const res = hydrateWorkflowReturnValue(result as any, ops);
+      const res = await hydrateWorkflowReturnValue(result as any, ops);
       expect(res).toBeInstanceOf(Response);
       expect(res.status).toEqual(202);
       expect(res.headers.get('X-Custom-Header')).toEqual('custom-value');
@@ -1859,7 +1941,7 @@ describe('runWorkflow', () => {
         workflowRun,
         events
       );
-      const res = hydrateWorkflowReturnValue(result as any, ops);
+      const res = await hydrateWorkflowReturnValue(result as any, ops);
       expect(res).toBeInstanceOf(Response);
       expect(res.status).toEqual(204);
       expect(res.body).toBeNull();
@@ -1888,7 +1970,7 @@ describe('runWorkflow', () => {
         workflowRun,
         events
       );
-      const res = hydrateWorkflowReturnValue(result as any, ops);
+      const res = await hydrateWorkflowReturnValue(result as any, ops);
       expect(res).toBeInstanceOf(Response);
       expect(res.status).toEqual(200);
       expect(res.body).toBeInstanceOf(ReadableStream);
@@ -1949,7 +2031,7 @@ describe('runWorkflow', () => {
           workflowRun,
           events
         );
-        const res = hydrateWorkflowReturnValue(result as any, ops);
+        const res = await hydrateWorkflowReturnValue(result as any, ops);
         expect(res).toBeInstanceOf(Response);
         expect(res.status).toEqual(302);
         expect(res.headers.get('Location')).toEqual(
@@ -1980,7 +2062,7 @@ describe('runWorkflow', () => {
           workflowRun,
           events
         );
-        const res = hydrateWorkflowReturnValue(result as any, ops);
+        const res = await hydrateWorkflowReturnValue(result as any, ops);
         expect(res).toBeInstanceOf(Response);
         expect(res.status).toEqual(301);
         expect(res.headers.get('Location')).toEqual(
@@ -2012,7 +2094,7 @@ describe('runWorkflow', () => {
           workflowRun,
           events
         );
-        const statuses = hydrateWorkflowReturnValue(result as any, ops);
+        const statuses = await hydrateWorkflowReturnValue(result as any, ops);
         expect(statuses).toEqual([301, 302, 303, 307, 308]);
       });
 
@@ -2069,7 +2151,7 @@ describe('runWorkflow', () => {
         workflowRun,
         events
       );
-      const req = hydrateWorkflowReturnValue(result as any, ops);
+      const req = await hydrateWorkflowReturnValue(result as any, ops);
       expect(req).toBeInstanceOf(Request);
       expect(req.method).toEqual('GET');
       expect(req.url).toEqual('https://example.com/api');
@@ -2101,7 +2183,7 @@ describe('runWorkflow', () => {
         workflowRun,
         events
       );
-      const req = hydrateWorkflowReturnValue(result as any, ops);
+      const req = await hydrateWorkflowReturnValue(result as any, ops);
       expect(req).toBeInstanceOf(Request);
       expect(req.method).toEqual('POST');
       expect(req.url).toEqual('https://example.com/api');
@@ -2141,7 +2223,7 @@ describe('runWorkflow', () => {
         workflowRun,
         events
       );
-      const req = hydrateWorkflowReturnValue(result as any, ops);
+      const req = await hydrateWorkflowReturnValue(result as any, ops);
       expect(req).toBeInstanceOf(Request);
       expect(req.headers.get('Content-Type')).toEqual('application/json');
       expect(req.headers.get('X-Custom-Header')).toEqual('custom-value');
@@ -2173,7 +2255,7 @@ describe('runWorkflow', () => {
         workflowRun,
         events
       );
-      const req = hydrateWorkflowReturnValue(result as any, ops);
+      const req = await hydrateWorkflowReturnValue(result as any, ops);
       expect(req).toBeInstanceOf(Request);
       expect(req.method).toEqual('PUT');
       expect(req.body).toBeInstanceOf(ReadableStream);
@@ -2309,7 +2391,7 @@ describe('runWorkflow', () => {
         events
       );
 
-      const result_obj = hydrateWorkflowReturnValue(result as any, ops);
+      const result_obj = await hydrateWorkflowReturnValue(result as any, ops);
 
       // According to MDN, the req1 properties should be inherited
       // and only the method should be overridden by the init options
@@ -2367,7 +2449,7 @@ describe('runWorkflow', () => {
         workflowRun,
         events
       );
-      expect(hydrateWorkflowReturnValue(result as any, ops)).toEqual(
+      expect(await hydrateWorkflowReturnValue(result as any, ops)).toEqual(
         'sleep completed'
       );
     });
@@ -2469,7 +2551,7 @@ describe('runWorkflow', () => {
         workflowRun,
         events
       );
-      expect(hydrateWorkflowReturnValue(result as any, ops)).toEqual(
+      expect(await hydrateWorkflowReturnValue(result as any, ops)).toEqual(
         'all sleeps completed'
       );
     });
@@ -2600,7 +2682,7 @@ describe('runWorkflow', () => {
         workflowRun,
         events
       );
-      expect(hydrateWorkflowReturnValue(result as any, ops)).toEqual({
+      expect(await hydrateWorkflowReturnValue(result as any, ops)).toEqual({
         step: 42,
         slept: true,
       });
@@ -2651,7 +2733,7 @@ describe('runWorkflow', () => {
         workflowRun,
         events
       );
-      expect(hydrateWorkflowReturnValue(result as any, ops)).toEqual(
+      expect(await hydrateWorkflowReturnValue(result as any, ops)).toEqual(
         'sleep with date completed'
       );
     });

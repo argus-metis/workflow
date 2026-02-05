@@ -159,9 +159,15 @@ const WaitCompletedEventSchema = BaseEventSchema.extend({
 /**
  * Event created when a workflow run is first created. The World implementation
  * atomically creates both the event and the run entity with status 'pending'.
+ *
+ * The runId can optionally be provided by the client (required for E2E encryption
+ * where the client needs to know the runId before serializing data). If not provided,
+ * the server generates it.
  */
 const RunCreatedEventSchema = BaseEventSchema.extend({
   eventType: z.literal('run_created'),
+  /** Optional client-provided runId. If not provided, server generates it. */
+  runId: z.string().optional(),
   eventData: z.object({
     deploymentId: z.string(),
     workflowName: z.string(),

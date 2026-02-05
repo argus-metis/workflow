@@ -1,14 +1,45 @@
 import { FatalError, WorkflowRuntimeError } from '@workflow/errors';
-import type { Event } from '@workflow/world';
+import type { Encryptor, Event, World } from '@workflow/world';
 import * as nanoid from 'nanoid';
 import { monotonicFactory } from 'ulid';
 import { describe, expect, it, vi } from 'vitest';
 import { EventsConsumer } from './events-consumer.js';
 import { WorkflowSuspension } from './global.js';
 import type { WorkflowOrchestratorContext } from './private.js';
-import { dehydrateStepReturnValue } from './serialization.js';
+import { dehydrateStepReturnValue as _dehydrateStepReturnValue } from './serialization.js';
 import { createUseStep } from './step.js';
 import { createContext } from './vm/index.js';
+
+// Mock encryptor without encryption for tests
+const mockEncryptor: Encryptor = {};
+
+// Mock world for tests
+const mockWorld = {
+  queue: async () => ({ messageId: 'msg_test' }),
+  createQueueHandler: () => async () => new Response(),
+  readFromStorage: async () => new Uint8Array(),
+  writeToStorage: async () => {},
+  deleteFromStorage: async () => {},
+  readFromStream: async () => new ReadableStream(),
+  writeToStream: async () => {},
+  writeToStreamMulti: async () => {},
+  closeStream: async () => {},
+  getDeploymentId: async () => 'test-deployment',
+  events: {
+    create: async () => ({ run: null }),
+    list: async () => ({ data: [], cursor: null, hasMore: false, run: null }),
+  },
+} as unknown as World;
+
+const mockRunId = 'wrun_test123';
+
+// Wrapper for dehydrateStepReturnValue to use in tests
+async function dehydrateStepReturnValue(
+  value: unknown,
+  ops: Promise<any>[] = []
+): Promise<Uint8Array | unknown> {
+  return _dehydrateStepReturnValue(value, mockRunId, mockEncryptor, ops);
+}
 
 // Helper to setup context to simulate a workflow run
 function setupWorkflowContext(events: Event[]): WorkflowOrchestratorContext {
@@ -27,11 +58,14 @@ function setupWorkflowContext(events: Event[]): WorkflowOrchestratorContext {
       new Uint8Array(size).map(() => 256 * context.globalThis.Math.random())
     ),
     onWorkflowError: vi.fn(),
+    runId: mockRunId,
+    world: mockWorld,
   };
 }
 
 describe('createUseStep', () => {
   it('should resolve with the result of a step', async () => {
+    const stepResult = await dehydrateStepReturnValue(3);
     const ctx = setupWorkflowContext([
       {
         eventId: 'evnt_0',
@@ -39,7 +73,7 @@ describe('createUseStep', () => {
         eventType: 'step_completed',
         correlationId: 'step_01K11TFZ62YS0YYFDQ3E8B9YCV',
         eventData: {
-          result: dehydrateStepReturnValue(3),
+          result: stepResult,
         },
         createdAt: new Date(),
       },
@@ -183,6 +217,7 @@ describe('createUseStep', () => {
   });
 
   it('should set the step function .name property correctly', async () => {
+    const stepResult = await dehydrateStepReturnValue(undefined);
     const ctx = setupWorkflowContext([
       {
         eventId: 'evnt_0',
@@ -190,7 +225,7 @@ describe('createUseStep', () => {
         eventType: 'step_completed',
         correlationId: 'step_01K11TFZ62YS0YYFDQ3E8B9YCV',
         eventData: {
-          result: dehydrateStepReturnValue(undefined),
+          result: stepResult,
         },
         createdAt: new Date(),
       },
@@ -402,6 +437,7 @@ describe('createUseStep', () => {
   });
 
   it('should remove queue item when step_completed (terminal state)', async () => {
+    const stepResult = await dehydrateStepReturnValue(42);
     const ctx = setupWorkflowContext([
       {
         eventId: 'evnt_0',
@@ -409,7 +445,7 @@ describe('createUseStep', () => {
         eventType: 'step_completed',
         correlationId: 'step_01K11TFZ62YS0YYFDQ3E8B9YCV',
         eventData: {
-          result: dehydrateStepReturnValue(42),
+          result: stepResult,
         },
         createdAt: new Date(),
       },

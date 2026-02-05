@@ -142,13 +142,17 @@ export function createUseStep(ctx: WorkflowOrchestratorContext) {
           ctx.invocationsQueue.delete(event.correlationId);
 
           // Step has completed, so resolve the Promise with the cached result
-          const hydratedResult = hydrateStepReturnValue(
+          // Use .then() pattern since hydrateStepReturnValue is async
+          hydrateStepReturnValue(
             event.eventData.result,
+            ctx.runId,
+            ctx.world,
             ctx.globalThis
-          );
-          setTimeout(() => {
-            resolve(hydratedResult);
-          }, 0);
+          ).then((hydratedResult) => {
+            setTimeout(() => {
+              resolve(hydratedResult as Result);
+            }, 0);
+          });
           return EventConsumerResult.Finished;
         }
 

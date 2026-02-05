@@ -27,7 +27,11 @@ export async function getHookByToken(token: string): Promise<Hook> {
   const world = getWorld();
   const hook = await world.hooks.getByToken(token);
   if (typeof hook.metadata !== 'undefined') {
-    hook.metadata = hydrateStepArguments(hook.metadata as any, [], hook.runId);
+    hook.metadata = await hydrateStepArguments(
+      hook.metadata as any,
+      hook.runId,
+      world
+    );
   }
   return hook;
 }
@@ -84,10 +88,11 @@ export async function resumeHook<T = any>(
         // Dehydrate the payload for storage
         const ops: Promise<any>[] = [];
         const v1Compat = isLegacySpecVersion(hook.specVersion);
-        const dehydratedPayload = dehydrateStepReturnValue(
+        const dehydratedPayload = await dehydrateStepReturnValue(
           payload,
-          ops,
           hook.runId,
+          world,
+          ops,
           globalThis,
           v1Compat
         );

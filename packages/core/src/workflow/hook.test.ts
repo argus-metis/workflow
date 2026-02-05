@@ -1,14 +1,45 @@
 import { WorkflowRuntimeError } from '@workflow/errors';
-import type { Event } from '@workflow/world';
+import type { Encryptor, Event, World } from '@workflow/world';
 import * as nanoid from 'nanoid';
 import { monotonicFactory } from 'ulid';
 import { describe, expect, it, vi } from 'vitest';
 import { EventsConsumer } from '../events-consumer.js';
 import { WorkflowSuspension } from '../global.js';
 import type { WorkflowOrchestratorContext } from '../private.js';
-import { dehydrateStepReturnValue } from '../serialization.js';
+import { dehydrateStepReturnValue as _dehydrateStepReturnValue } from '../serialization.js';
 import { createContext } from '../vm/index.js';
 import { createCreateHook } from './hook.js';
+
+// Mock encryptor without encryption for tests
+const mockEncryptor: Encryptor = {};
+
+// Mock world for tests
+const mockWorld = {
+  queue: async () => ({ messageId: 'msg_test' }),
+  createQueueHandler: () => async () => new Response(),
+  readFromStorage: async () => new Uint8Array(),
+  writeToStorage: async () => {},
+  deleteFromStorage: async () => {},
+  readFromStream: async () => new ReadableStream(),
+  writeToStream: async () => {},
+  writeToStreamMulti: async () => {},
+  closeStream: async () => {},
+  getDeploymentId: async () => 'test-deployment',
+  events: {
+    create: async () => ({ run: null }),
+    list: async () => ({ data: [], cursor: null, hasMore: false, run: null }),
+  },
+} as unknown as World;
+
+const mockRunId = 'wrun_test123';
+
+// Wrapper for dehydrateStepReturnValue to use in tests
+async function dehydrateStepReturnValue(
+  value: unknown,
+  ops: Promise<any>[] = []
+): Promise<Uint8Array | unknown> {
+  return _dehydrateStepReturnValue(value, mockRunId, mockEncryptor, ops);
+}
 
 // Helper to setup context to simulate a workflow run
 function setupWorkflowContext(events: Event[]): WorkflowOrchestratorContext {
@@ -27,12 +58,15 @@ function setupWorkflowContext(events: Event[]): WorkflowOrchestratorContext {
       new Uint8Array(size).map(() => 256 * context.globalThis.Math.random())
     ),
     onWorkflowError: vi.fn(),
+    runId: mockRunId,
+    world: mockWorld,
   };
 }
 
 describe('createCreateHook', () => {
   it('should resolve with payload when hook_received event is received', async () => {
     const ops: Promise<any>[] = [];
+    const payload = await dehydrateStepReturnValue({ message: 'hello' }, ops);
     const ctx = setupWorkflowContext([
       {
         eventId: 'evnt_0',
@@ -40,7 +74,7 @@ describe('createCreateHook', () => {
         eventType: 'hook_received',
         correlationId: 'hook_01K11TFZ62YS0YYFDQ3E8B9YCV',
         eventData: {
-          payload: dehydrateStepReturnValue({ message: 'hello' }, ops),
+          payload,
         },
         createdAt: new Date(),
       },
@@ -110,6 +144,7 @@ describe('createCreateHook', () => {
 
   it('should consume hook_created event and remove from invocations queue', async () => {
     const ops: Promise<any>[] = [];
+    const payload = await dehydrateStepReturnValue({ data: 'test' }, ops);
     const ctx = setupWorkflowContext([
       {
         eventId: 'evnt_0',
@@ -125,7 +160,7 @@ describe('createCreateHook', () => {
         eventType: 'hook_received',
         correlationId: 'hook_01K11TFZ62YS0YYFDQ3E8B9YCV',
         eventData: {
-          payload: dehydrateStepReturnValue({ data: 'test' }, ops),
+          payload,
         },
         createdAt: new Date(),
       },
@@ -174,6 +209,14 @@ describe('createCreateHook', () => {
 
   it('should handle multiple hook_received events with iterator', async () => {
     const ops: Promise<any>[] = [];
+    const firstPayload = await dehydrateStepReturnValue(
+      { message: 'first' },
+      ops
+    );
+    const secondPayload = await dehydrateStepReturnValue(
+      { message: 'second' },
+      ops
+    );
     const ctx = setupWorkflowContext([
       {
         eventId: 'evnt_0',
@@ -189,7 +232,7 @@ describe('createCreateHook', () => {
         eventType: 'hook_received',
         correlationId: 'hook_01K11TFZ62YS0YYFDQ3E8B9YCV',
         eventData: {
-          payload: dehydrateStepReturnValue({ message: 'first' }, ops),
+          payload: firstPayload,
         },
         createdAt: new Date(),
       },
@@ -199,7 +242,7 @@ describe('createCreateHook', () => {
         eventType: 'hook_received',
         correlationId: 'hook_01K11TFZ62YS0YYFDQ3E8B9YCV',
         eventData: {
-          payload: dehydrateStepReturnValue({ message: 'second' }, ops),
+          payload: secondPayload,
         },
         createdAt: new Date(),
       },

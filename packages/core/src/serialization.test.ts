@@ -1,22 +1,23 @@
 import { runInContext } from 'node:vm';
 import type { WorkflowRuntimeError } from '@workflow/errors';
 import { WORKFLOW_DESERIALIZE, WORKFLOW_SERIALIZE } from '@workflow/serde';
+import type { Encryptor } from '@workflow/world';
 import { describe, expect, it } from 'vitest';
 import { registerSerializationClass } from './class-serialization.js';
 import { getStepFunction, registerStepFunction } from './private.js';
 import {
+  dehydrateStepArguments as _dehydrateStepArguments,
+  dehydrateStepReturnValue as _dehydrateStepReturnValue,
+  dehydrateWorkflowArguments as _dehydrateWorkflowArguments,
+  dehydrateWorkflowReturnValue as _dehydrateWorkflowReturnValue,
+  hydrateStepArguments as _hydrateStepArguments,
+  hydrateStepReturnValue as _hydrateStepReturnValue,
+  hydrateWorkflowArguments as _hydrateWorkflowArguments,
+  hydrateWorkflowReturnValue as _hydrateWorkflowReturnValue,
   decodeFormatPrefix,
-  dehydrateStepArguments,
-  dehydrateStepReturnValue,
-  dehydrateWorkflowArguments,
-  dehydrateWorkflowReturnValue,
   getCommonRevivers,
   getStreamType,
   getWorkflowReducers,
-  hydrateStepArguments,
-  hydrateStepReturnValue,
-  hydrateWorkflowArguments,
-  hydrateWorkflowReturnValue,
   SerializationFormat,
 } from './serialization.js';
 import { STABLE_ULID, STREAM_NAME_SYMBOL } from './symbols.js';
@@ -24,15 +25,135 @@ import { createContext } from './vm/index.js';
 
 const mockRunId = 'wrun_mockidnumber0001';
 
+// Mock Encryptor without encryption for tests (no encrypt/decrypt functions defined)
+const mockEncryptor: Encryptor = {};
+
+// =============================================================================
+// Test wrapper functions that preserve backwards-compatible signatures
+// These wrap the new async functions for use in existing tests
+// =============================================================================
+
+async function dehydrateWorkflowArguments(
+  value: unknown,
+  ops: Promise<void>[] = [],
+  runId: string = mockRunId,
+  global: Record<string, any> = globalThis,
+  v1Compat = false
+): Promise<Uint8Array | unknown> {
+  return _dehydrateWorkflowArguments(
+    value,
+    runId,
+    mockEncryptor,
+    ops,
+    global,
+    v1Compat
+  );
+}
+
+async function hydrateWorkflowArguments(
+  value: Uint8Array | unknown,
+  global: Record<string, any> = globalThis,
+  extraRevivers: Record<string, (value: any) => any> = {}
+): Promise<unknown> {
+  return _hydrateWorkflowArguments(
+    value,
+    mockRunId,
+    mockEncryptor,
+    global,
+    extraRevivers
+  );
+}
+
+async function dehydrateStepArguments(
+  value: unknown,
+  runId: string = mockRunId,
+  global: Record<string, any> = globalThis,
+  v1Compat = false
+): Promise<Uint8Array | unknown> {
+  return _dehydrateStepArguments(value, runId, mockEncryptor, global, v1Compat);
+}
+
+async function hydrateStepArguments(
+  value: Uint8Array | unknown,
+  ops: Promise<any>[] = [],
+  runId: string = mockRunId,
+  global: Record<string, any> = globalThis,
+  extraRevivers: Record<string, (value: any) => any> = {}
+): Promise<unknown> {
+  return _hydrateStepArguments(
+    value,
+    runId,
+    mockEncryptor,
+    ops,
+    global,
+    extraRevivers
+  );
+}
+
+async function dehydrateStepReturnValue(
+  value: unknown,
+  ops: Promise<any>[] = [],
+  runId: string = mockRunId,
+  global: Record<string, any> = globalThis,
+  v1Compat = false
+): Promise<Uint8Array | unknown> {
+  return _dehydrateStepReturnValue(
+    value,
+    runId,
+    mockEncryptor,
+    ops,
+    global,
+    v1Compat
+  );
+}
+
+async function hydrateStepReturnValue(
+  value: Uint8Array | unknown,
+  global: Record<string, any> = globalThis,
+  extraRevivers: Record<string, (value: any) => any> = {}
+): Promise<unknown> {
+  return _hydrateStepReturnValue(
+    value,
+    mockRunId,
+    mockEncryptor,
+    global,
+    extraRevivers
+  );
+}
+
+async function dehydrateWorkflowReturnValue(
+  value: unknown,
+  global: Record<string, any> = globalThis
+): Promise<Uint8Array | unknown> {
+  return _dehydrateWorkflowReturnValue(value, mockRunId, mockEncryptor, global);
+}
+
+async function hydrateWorkflowReturnValue(
+  value: Uint8Array | unknown,
+  ops: Promise<void>[] = [],
+  runId: string = mockRunId,
+  global: Record<string, any> = globalThis,
+  extraRevivers: Record<string, (value: any) => any> = {}
+): Promise<unknown> {
+  return _hydrateWorkflowReturnValue(
+    value,
+    runId,
+    mockEncryptor,
+    ops,
+    global,
+    extraRevivers
+  );
+}
+
 describe('getStreamType', () => {
-  it('should return `undefined` for a regular stream', () => {
+  it('should return `undefined` for a regular stream', async () => {
     const stream = new ReadableStream();
     expect(stream.locked).toBe(false);
     expect(getStreamType(stream)).toBeUndefined();
     expect(stream.locked).toBe(false);
   });
 
-  it('should return "bytes" for a byte stream', () => {
+  it('should return "bytes" for a byte stream', async () => {
     const stream = new ReadableStream({
       type: 'bytes',
     });
@@ -48,9 +169,9 @@ describe('workflow arguments', () => {
     fixedTimestamp: 1714857600000,
   });
 
-  it('should work with Date', () => {
+  it('should work with Date', async () => {
     const date = new Date('2025-07-17T04:30:34.824Z');
-    const serialized = dehydrateWorkflowArguments(date, [], mockRunId);
+    const serialized = await dehydrateWorkflowArguments(date, [], mockRunId);
     expect(serialized).toMatchInlineSnapshot(`
       Uint8Array [
         100,
@@ -99,16 +220,16 @@ describe('workflow arguments', () => {
       ]
     `);
 
-    const hydrated = hydrateWorkflowArguments(serialized, vmGlobalThis);
+    const hydrated = await hydrateWorkflowArguments(serialized, vmGlobalThis);
     vmGlobalThis.val = hydrated;
 
     expect(runInContext('val instanceof Date', context)).toBe(true);
     expect(hydrated.getTime()).toEqual(date.getTime());
   });
 
-  it('should work with invalid Date', () => {
+  it('should work with invalid Date', async () => {
     const date = new Date('asdf');
-    const serialized = dehydrateWorkflowArguments(date, [], mockRunId);
+    const serialized = await dehydrateWorkflowArguments(date, [], mockRunId);
     expect(serialized).toMatchInlineSnapshot(`
       Uint8Array [
         100,
@@ -134,16 +255,16 @@ describe('workflow arguments', () => {
       ]
     `);
 
-    const hydrated = hydrateWorkflowArguments(serialized, vmGlobalThis);
+    const hydrated = await hydrateWorkflowArguments(serialized, vmGlobalThis);
     vmGlobalThis.val = hydrated;
 
     expect(runInContext('val instanceof Date', context)).toBe(true);
     expect(hydrated.getTime()).toEqual(NaN);
   });
 
-  it('should work with BigInt', () => {
+  it('should work with BigInt', async () => {
     const bigInt = BigInt('9007199254740992');
-    const serialized = dehydrateWorkflowArguments(bigInt, [], mockRunId);
+    const serialized = await dehydrateWorkflowArguments(bigInt, [], mockRunId);
     expect(serialized).toMatchInlineSnapshot(`
       Uint8Array [
         100,
@@ -186,14 +307,14 @@ describe('workflow arguments', () => {
       ]
     `);
 
-    const hydrated = hydrateWorkflowArguments(serialized, vmGlobalThis);
+    const hydrated = await hydrateWorkflowArguments(serialized, vmGlobalThis);
     expect(hydrated).toBe(BigInt(9007199254740992));
     expect(typeof hydrated).toBe('bigint');
   });
 
-  it('should work with BigInt negative', () => {
+  it('should work with BigInt negative', async () => {
     const bigInt = BigInt('-12345678901234567890');
-    const serialized = dehydrateWorkflowArguments(bigInt, [], mockRunId);
+    const serialized = await dehydrateWorkflowArguments(bigInt, [], mockRunId);
     expect(serialized).toMatchInlineSnapshot(`
       Uint8Array [
         100,
@@ -241,17 +362,17 @@ describe('workflow arguments', () => {
       ]
     `);
 
-    const hydrated = hydrateWorkflowArguments(serialized, vmGlobalThis);
+    const hydrated = await hydrateWorkflowArguments(serialized, vmGlobalThis);
     expect(hydrated).toBe(BigInt('-12345678901234567890'));
     expect(typeof hydrated).toBe('bigint');
   });
 
-  it('should work with Map', () => {
+  it('should work with Map', async () => {
     const map = new Map([
       [2, 'foo'],
       [6, 'bar'],
     ]);
-    const serialized = dehydrateWorkflowArguments(map, [], mockRunId);
+    const serialized = await dehydrateWorkflowArguments(map, [], mockRunId);
     expect(serialized).toMatchInlineSnapshot(`
       Uint8Array [
         100,
@@ -306,15 +427,15 @@ describe('workflow arguments', () => {
       ]
     `);
 
-    const hydrated = hydrateWorkflowArguments(serialized, vmGlobalThis);
+    const hydrated = await hydrateWorkflowArguments(serialized, vmGlobalThis);
     vmGlobalThis.val = hydrated;
 
     expect(runInContext('val instanceof Map', context)).toBe(true);
   });
 
-  it('should work with Set', () => {
+  it('should work with Set', async () => {
     const set = new Set([1, '2', true]);
-    const serialized = dehydrateWorkflowArguments(set, [], mockRunId);
+    const serialized = await dehydrateWorkflowArguments(set, [], mockRunId);
     expect(serialized).toMatchInlineSnapshot(`
       Uint8Array [
         100,
@@ -354,22 +475,22 @@ describe('workflow arguments', () => {
       ]
     `);
 
-    const hydrated = hydrateWorkflowArguments(serialized, vmGlobalThis);
+    const hydrated = await hydrateWorkflowArguments(serialized, vmGlobalThis);
     vmGlobalThis.val = hydrated;
 
     expect(runInContext('val instanceof Set', context)).toBe(true);
   });
 
-  it('should work with WritableStream', () => {
+  it('should work with WritableStream', async () => {
     const stream = new WritableStream();
-    const serialized = dehydrateWorkflowArguments(stream, [], mockRunId);
+    const serialized = await dehydrateWorkflowArguments(stream, [], mockRunId);
     expect(serialized instanceof Uint8Array).toBe(true);
     // Verify the serialized data contains WritableStream reference
     const serializedStr = new TextDecoder().decode(serialized);
     expect(serializedStr).toContain('WritableStream');
 
     class OurWritableStream {}
-    const hydrated = hydrateWorkflowArguments(serialized, {
+    const hydrated = await hydrateWorkflowArguments(serialized, {
       WritableStream: OurWritableStream,
     });
     expect(hydrated).toBeInstanceOf(OurWritableStream);
@@ -377,16 +498,16 @@ describe('workflow arguments', () => {
     expect(streamName).toMatch(/^strm_[0-9A-Z]{26}$/);
   });
 
-  it('should work with ReadableStream', () => {
+  it('should work with ReadableStream', async () => {
     const stream = new ReadableStream();
-    const serialized = dehydrateWorkflowArguments(stream, [], mockRunId);
+    const serialized = await dehydrateWorkflowArguments(stream, [], mockRunId);
     expect(serialized instanceof Uint8Array).toBe(true);
     // Verify the serialized data contains ReadableStream reference
     const serializedStr = new TextDecoder().decode(serialized);
     expect(serializedStr).toContain('ReadableStream');
 
     class OurReadableStream {}
-    const hydrated = hydrateWorkflowArguments(serialized, {
+    const hydrated = await hydrateWorkflowArguments(serialized, {
       ReadableStream: OurReadableStream,
     });
     expect(hydrated).toBeInstanceOf(OurReadableStream);
@@ -394,12 +515,12 @@ describe('workflow arguments', () => {
     expect(streamName).toMatch(/^strm_[0-9A-Z]{26}$/);
   });
 
-  it('should work with Headers', () => {
+  it('should work with Headers', async () => {
     const headers = new Headers();
     headers.set('foo', 'bar');
     headers.append('set-cookie', 'a');
     headers.append('set-cookie', 'b');
-    const serialized = dehydrateWorkflowArguments(headers, [], mockRunId);
+    const serialized = await dehydrateWorkflowArguments(headers, [], mockRunId);
     expect(serialized).toMatchInlineSnapshot(`
       Uint8Array [
         100,
@@ -483,13 +604,13 @@ describe('workflow arguments', () => {
       ]
     `);
 
-    const hydrated = hydrateWorkflowArguments(serialized, vmGlobalThis);
+    const hydrated = await hydrateWorkflowArguments(serialized, vmGlobalThis);
     expect(hydrated).toBeInstanceOf(Headers);
     expect(hydrated.get('foo')).toEqual('bar');
     expect(hydrated.get('set-cookie')).toEqual('a, b');
   });
 
-  it('should work with Response', () => {
+  it('should work with Response', async () => {
     const response = new Response('Hello, world!', {
       status: 202,
       statusText: 'Custom',
@@ -499,7 +620,11 @@ describe('workflow arguments', () => {
         ['set-cookie', 'b'],
       ]),
     });
-    const serialized = dehydrateWorkflowArguments(response, [], mockRunId);
+    const serialized = await dehydrateWorkflowArguments(
+      response,
+      [],
+      mockRunId
+    );
     expect(serialized instanceof Uint8Array).toBe(true);
     // Verify the serialized data contains Response reference
     const serializedStr = new TextDecoder().decode(serialized);
@@ -516,7 +641,7 @@ describe('workflow arguments', () => {
     }
     class OurReadableStream {}
     class OurHeaders {}
-    const hydrated = hydrateWorkflowArguments(serialized, {
+    const hydrated = await hydrateWorkflowArguments(serialized, {
       Headers: OurHeaders,
       Response: OurResponse,
       ReadableStream: OurReadableStream,
@@ -529,10 +654,10 @@ describe('workflow arguments', () => {
     expect(bodyStreamName).toMatch(/^strm_[0-9A-Z]{26}$/);
   });
 
-  it('should work with URLSearchParams', () => {
+  it('should work with URLSearchParams', async () => {
     const params = new URLSearchParams('a=1&b=2&a=3');
 
-    const serialized = dehydrateWorkflowArguments(params, [], mockRunId);
+    const serialized = await dehydrateWorkflowArguments(params, [], mockRunId);
     expect(serialized).toMatchInlineSnapshot(`
       Uint8Array [
         100,
@@ -579,7 +704,7 @@ describe('workflow arguments', () => {
       ]
     `);
 
-    const hydrated = hydrateWorkflowArguments(serialized, vmGlobalThis);
+    const hydrated = await hydrateWorkflowArguments(serialized, vmGlobalThis);
     vmGlobalThis.val = hydrated;
     expect(runInContext('val instanceof URLSearchParams', context)).toBe(true);
     expect(hydrated.getAll('a')).toEqual(['1', '3']);
@@ -592,10 +717,10 @@ describe('workflow arguments', () => {
     ]);
   });
 
-  it('should work with empty URLSearchParams', () => {
+  it('should work with empty URLSearchParams', async () => {
     const params = new URLSearchParams();
 
-    const serialized = dehydrateWorkflowArguments(params, [], mockRunId);
+    const serialized = await dehydrateWorkflowArguments(params, [], mockRunId);
     expect(serialized).toMatchInlineSnapshot(`
       Uint8Array [
         100,
@@ -632,17 +757,17 @@ describe('workflow arguments', () => {
       ]
     `);
 
-    const hydrated = hydrateWorkflowArguments(serialized, vmGlobalThis);
+    const hydrated = await hydrateWorkflowArguments(serialized, vmGlobalThis);
     vmGlobalThis.val = hydrated;
     expect(runInContext('val instanceof URLSearchParams', context)).toBe(true);
     expect(hydrated.toString()).toEqual('');
     expect(Array.from(hydrated.entries())).toEqual([]);
   });
 
-  it('should work with empty ArrayBuffer', () => {
+  it('should work with empty ArrayBuffer', async () => {
     const buffer = new ArrayBuffer(0);
 
-    const serialized = dehydrateWorkflowArguments(buffer, [], mockRunId);
+    const serialized = await dehydrateWorkflowArguments(buffer, [], mockRunId);
     expect(serialized).toMatchInlineSnapshot(`
       Uint8Array [
         100,
@@ -675,16 +800,16 @@ describe('workflow arguments', () => {
       ]
     `);
 
-    const hydrated = hydrateWorkflowArguments(serialized, vmGlobalThis);
+    const hydrated = await hydrateWorkflowArguments(serialized, vmGlobalThis);
     vmGlobalThis.val = hydrated;
     expect(runInContext('val instanceof ArrayBuffer', context)).toBe(true);
     expect(hydrated.byteLength).toEqual(0);
   });
 
-  it('should work with empty Uint8Array', () => {
+  it('should work with empty Uint8Array', async () => {
     const array = new Uint8Array(0);
 
-    const serialized = dehydrateWorkflowArguments(array, [], mockRunId);
+    const serialized = await dehydrateWorkflowArguments(array, [], mockRunId);
     expect(serialized).toMatchInlineSnapshot(`
       Uint8Array [
         100,
@@ -716,17 +841,17 @@ describe('workflow arguments', () => {
       ]
     `);
 
-    const hydrated = hydrateWorkflowArguments(serialized, vmGlobalThis);
+    const hydrated = await hydrateWorkflowArguments(serialized, vmGlobalThis);
     vmGlobalThis.val = hydrated;
     expect(runInContext('val instanceof Uint8Array', context)).toBe(true);
     expect(hydrated.length).toEqual(0);
     expect(hydrated.byteLength).toEqual(0);
   });
 
-  it('should work with empty Int32Array', () => {
+  it('should work with empty Int32Array', async () => {
     const array = new Int32Array(0);
 
-    const serialized = dehydrateWorkflowArguments(array, [], mockRunId);
+    const serialized = await dehydrateWorkflowArguments(array, [], mockRunId);
     expect(serialized).toMatchInlineSnapshot(`
       Uint8Array [
         100,
@@ -758,17 +883,17 @@ describe('workflow arguments', () => {
       ]
     `);
 
-    const hydrated = hydrateWorkflowArguments(serialized, vmGlobalThis);
+    const hydrated = await hydrateWorkflowArguments(serialized, vmGlobalThis);
     vmGlobalThis.val = hydrated;
     expect(runInContext('val instanceof Int32Array', context)).toBe(true);
     expect(hydrated.length).toEqual(0);
     expect(hydrated.byteLength).toEqual(0);
   });
 
-  it('should work with empty Float64Array', () => {
+  it('should work with empty Float64Array', async () => {
     const array = new Float64Array(0);
 
-    const serialized = dehydrateWorkflowArguments(array, [], mockRunId);
+    const serialized = await dehydrateWorkflowArguments(array, [], mockRunId);
     expect(serialized).toMatchInlineSnapshot(`
       Uint8Array [
         100,
@@ -802,14 +927,14 @@ describe('workflow arguments', () => {
       ]
     `);
 
-    const hydrated = hydrateWorkflowArguments(serialized, vmGlobalThis);
+    const hydrated = await hydrateWorkflowArguments(serialized, vmGlobalThis);
     vmGlobalThis.val = hydrated;
     expect(runInContext('val instanceof Float64Array', context)).toBe(true);
     expect(hydrated.length).toEqual(0);
     expect(hydrated.byteLength).toEqual(0);
   });
 
-  it('should work with Request (without responseWritable)', () => {
+  it('should work with Request (without responseWritable)', async () => {
     // Mock STABLE_ULID to return a deterministic value
     const originalStableUlid = (globalThis as any)[STABLE_ULID];
     (globalThis as any)[STABLE_ULID] = () => '01ARZ3NDEKTSV4RRFFQ69G5FA1';
@@ -825,7 +950,11 @@ describe('workflow arguments', () => {
         duplex: 'half',
       } as RequestInit);
 
-      const serialized = dehydrateWorkflowArguments(request, [], mockRunId);
+      const serialized = await dehydrateWorkflowArguments(
+        request,
+        [],
+        mockRunId
+      );
       expect(serialized).toMatchInlineSnapshot(`
         Uint8Array [
           100,
@@ -1134,7 +1263,7 @@ describe('workflow arguments', () => {
       }
       class OurReadableStream {}
       class OurHeaders {}
-      const hydrated = hydrateWorkflowArguments(serialized, {
+      const hydrated = await hydrateWorkflowArguments(serialized, {
         Request: OurRequest,
         Headers: OurHeaders,
         ReadableStream: OurReadableStream,
@@ -1150,7 +1279,7 @@ describe('workflow arguments', () => {
     }
   });
 
-  it('should work with Request (with responseWritable)', () => {
+  it('should work with Request (with responseWritable)', async () => {
     // Mock STABLE_ULID to return deterministic values
     const originalStableUlid = (globalThis as any)[STABLE_ULID];
     let ulidCounter = 0;
@@ -1174,7 +1303,11 @@ describe('workflow arguments', () => {
       const responseWritable = new WritableStream();
       request[Symbol.for('WEBHOOK_RESPONSE_WRITABLE')] = responseWritable;
 
-      const serialized = dehydrateWorkflowArguments(request, [], mockRunId);
+      const serialized = await dehydrateWorkflowArguments(
+        request,
+        [],
+        mockRunId
+      );
       expect(serialized).toMatchInlineSnapshot(`
         Uint8Array [
           100,
@@ -1550,7 +1683,7 @@ describe('workflow arguments', () => {
       class OurReadableStream {}
       class OurWritableStream {}
       class OurHeaders {}
-      const hydrated = hydrateWorkflowArguments(serialized, {
+      const hydrated = await hydrateWorkflowArguments(serialized, {
         Request: OurRequest,
         Headers: OurHeaders,
         ReadableStream: OurReadableStream,
@@ -1577,11 +1710,11 @@ describe('workflow arguments', () => {
     }
   });
 
-  it('should throw error for an unsupported type', () => {
+  it('should throw error for an unsupported type', async () => {
     class Foo {}
     let err: WorkflowRuntimeError | undefined;
     try {
-      dehydrateWorkflowArguments(new Foo(), [], mockRunId);
+      await dehydrateWorkflowArguments(new Foo(), [], mockRunId);
     } catch (err_) {
       err = err_ as WorkflowRuntimeError;
     }
@@ -1593,11 +1726,11 @@ describe('workflow arguments', () => {
 });
 
 describe('workflow return value', () => {
-  it('should throw error for an unsupported type', () => {
+  it('should throw error for an unsupported type', async () => {
     class Foo {}
     let err: WorkflowRuntimeError | undefined;
     try {
-      dehydrateWorkflowReturnValue(new Foo());
+      await dehydrateWorkflowReturnValue(new Foo());
     } catch (err_) {
       err = err_ as WorkflowRuntimeError;
     }
@@ -1609,11 +1742,11 @@ describe('workflow return value', () => {
 });
 
 describe('step arguments', () => {
-  it('should throw error for an unsupported type', () => {
+  it('should throw error for an unsupported type', async () => {
     class Foo {}
     let err: WorkflowRuntimeError | undefined;
     try {
-      dehydrateStepArguments(new Foo(), globalThis);
+      await dehydrateStepArguments(new Foo(), globalThis);
     } catch (err_) {
       err = err_ as WorkflowRuntimeError;
     }
@@ -1625,11 +1758,11 @@ describe('step arguments', () => {
 });
 
 describe('step return value', () => {
-  it('should throw error for an unsupported type', () => {
+  it('should throw error for an unsupported type', async () => {
     class Foo {}
     let err: WorkflowRuntimeError | undefined;
     try {
-      dehydrateStepReturnValue(new Foo(), [], mockRunId);
+      await dehydrateStepReturnValue(new Foo(), [], mockRunId);
     } catch (err_) {
       err = err_ as WorkflowRuntimeError;
     }
@@ -1647,7 +1780,7 @@ describe('step function serialization', () => {
     fixedTimestamp: 1714857600000,
   });
 
-  it('should detect step function by checking for stepId property', () => {
+  it('should detect step function by checking for stepId property', async () => {
     const stepName = 'myStep';
     const stepFn = async (x: number) => x * 2;
 
@@ -1663,14 +1796,14 @@ describe('step function serialization', () => {
     expect((stepFn as any).stepId).toBe(stepName);
   });
 
-  it('should not have stepId on regular functions', () => {
+  it('should not have stepId on regular functions', async () => {
     const regularFn = async (x: number) => x * 2;
 
     // Regular functions should not have stepId
     expect((regularFn as any).stepId).toBeUndefined();
   });
 
-  it('should lookup registered step function by name', () => {
+  it('should lookup registered step function by name', async () => {
     const stepName = 'myRegisteredStep';
     const stepFn = async (x: number) => x * 2;
 
@@ -1682,12 +1815,12 @@ describe('step function serialization', () => {
     expect(retrieved).toBe(stepFn);
   });
 
-  it('should return undefined for non-existent registered step function', () => {
+  it('should return undefined for non-existent registered step function', async () => {
     const retrieved = getStepFunction('nonExistentStep');
     expect(retrieved).toBeUndefined();
   });
 
-  it('should deserialize step function name through reviver', () => {
+  it('should deserialize step function name through reviver', async () => {
     const stepName = 'testStep';
     const stepFn = async () => 42;
 
@@ -1701,7 +1834,7 @@ describe('step function serialization', () => {
     expect(result).toBe(stepFn);
   });
 
-  it('should throw error when reviver cannot find registered step function', () => {
+  it('should throw error when reviver cannot find registered step function', async () => {
     const revivers = getCommonRevivers(vmGlobalThis);
 
     let err: Error | undefined;
@@ -1716,7 +1849,7 @@ describe('step function serialization', () => {
     expect(err?.message).toContain('Make sure the step function is registered');
   });
 
-  it('should dehydrate step function passed as argument to a step', () => {
+  it('should dehydrate step function passed as argument to a step', async () => {
     const stepName = 'step//workflows/test.ts//myStep';
     const stepFn = async (x: number) => x * 2;
 
@@ -1736,14 +1869,14 @@ describe('step function serialization', () => {
     const args = [stepFn, 42];
 
     // This should serialize the step function by its name using the reducer
-    const dehydrated = dehydrateStepArguments(args, globalThis);
+    const dehydrated = await dehydrateStepArguments(args, globalThis);
 
     // Verify it dehydrated successfully
     expect(dehydrated).toBeDefined();
     expect(dehydrated instanceof Uint8Array).toBe(true);
     // The dehydrated structure is a binary format from devalue
     // It should contain the step function serialized as its name
-    const dehydratedStr = new TextDecoder().decode(dehydrated);
+    const dehydratedStr = new TextDecoder().decode(dehydrated as Uint8Array);
     expect(dehydratedStr).toContain(stepName);
     expect(dehydratedStr).toContain('42');
   });
@@ -1782,18 +1915,18 @@ describe('step function serialization', () => {
 
     // Serialize the step function with closure variables
     const args = [stepFn, 7];
-    const dehydrated = dehydrateStepArguments(args, globalThis);
+    const dehydrated = await dehydrateStepArguments(args, globalThis);
 
     // Verify it serialized
     expect(dehydrated).toBeDefined();
     expect(dehydrated instanceof Uint8Array).toBe(true);
-    const serialized = new TextDecoder().decode(dehydrated);
+    const serialized = new TextDecoder().decode(dehydrated as Uint8Array);
     expect(serialized).toContain(stepName);
     expect(serialized).toContain('multiplier');
     expect(serialized).toContain('prefix');
 
     // Now hydrate it back
-    const hydrated = hydrateStepArguments(
+    const hydrated = await hydrateStepArguments(
       dehydrated,
       [],
       'test-run-123',
@@ -1830,7 +1963,7 @@ describe('step function serialization', () => {
     expect(result).toBe('Result: 21');
   });
 
-  it('should serialize step function to object through reducer', () => {
+  it('should serialize step function to object through reducer', async () => {
     const stepName = 'step//workflows/test.ts//anotherStep';
     const stepFn = async () => 'result';
 
@@ -1886,7 +2019,7 @@ describe('custom class serialization', () => {
     context
   );
 
-  it('should serialize and deserialize a class with WORKFLOW_SERIALIZE/DESERIALIZE', () => {
+  it('should serialize and deserialize a class with WORKFLOW_SERIALIZE/DESERIALIZE', async () => {
     // Define the class in the host context (for serialization)
     class Point {
       constructor(
@@ -1932,7 +2065,7 @@ describe('custom class serialization', () => {
     );
 
     const point = new Point(10, 20);
-    const serialized = dehydrateWorkflowArguments(point, [], mockRunId);
+    const serialized = await dehydrateWorkflowArguments(point, [], mockRunId);
 
     // Verify it serialized with the Instance type
     expect(serialized).toBeDefined();
@@ -1942,7 +2075,7 @@ describe('custom class serialization', () => {
     expect(serializedStr).toContain('test/Point');
 
     // Hydrate it back (inside the VM context)
-    const hydrated = hydrateWorkflowArguments(serialized, vmGlobalThis);
+    const hydrated = await hydrateWorkflowArguments(serialized, vmGlobalThis);
     // Note: hydrated is an instance of the VM's Point class, not the host's
     // so we check constructor.name instead of instanceof
     expect(hydrated.constructor.name).toBe('Point');
@@ -1950,7 +2083,7 @@ describe('custom class serialization', () => {
     expect(hydrated.y).toBe(20);
   });
 
-  it('should serialize nested custom serializable objects', () => {
+  it('should serialize nested custom serializable objects', async () => {
     // Define the class in the host context (for serialization)
     class Vector {
       constructor(
@@ -2002,8 +2135,8 @@ describe('custom class serialization', () => {
       },
     };
 
-    const serialized = dehydrateWorkflowArguments(data, [], mockRunId);
-    const hydrated = hydrateWorkflowArguments(serialized, vmGlobalThis);
+    const serialized = await dehydrateWorkflowArguments(data, [], mockRunId);
+    const hydrated = await hydrateWorkflowArguments(serialized, vmGlobalThis);
 
     expect(hydrated.name).toBe('test');
     expect(hydrated.vector.constructor.name).toBe('Vector');
@@ -2014,7 +2147,7 @@ describe('custom class serialization', () => {
     expect(hydrated.nested.anotherVector.dy).toBe(2);
   });
 
-  it('should serialize custom class in an array', () => {
+  it('should serialize custom class in an array', async () => {
     // Define the class in the host context (for serialization)
     class Item {
       constructor(public id: string) {}
@@ -2056,8 +2189,8 @@ describe('custom class serialization', () => {
 
     const items = [new Item('a'), new Item('b'), new Item('c')];
 
-    const serialized = dehydrateWorkflowArguments(items, [], mockRunId);
-    const hydrated = hydrateWorkflowArguments(serialized, vmGlobalThis);
+    const serialized = await dehydrateWorkflowArguments(items, [], mockRunId);
+    const hydrated = await hydrateWorkflowArguments(serialized, vmGlobalThis);
 
     expect(Array.isArray(hydrated)).toBe(true);
     expect(hydrated).toHaveLength(3);
@@ -2069,7 +2202,7 @@ describe('custom class serialization', () => {
     expect(hydrated[2].id).toBe('c');
   });
 
-  it('should work with step arguments', () => {
+  it('should work with step arguments', async () => {
     class Config {
       constructor(
         public setting: string,
@@ -2092,8 +2225,8 @@ describe('custom class serialization', () => {
     registerSerializationClass('test/Config', Config);
 
     const config = new Config('maxRetries', 3);
-    const serialized = dehydrateStepArguments([config], globalThis);
-    const hydrated = hydrateStepArguments(
+    const serialized = await dehydrateStepArguments([config], globalThis);
+    const hydrated = await hydrateStepArguments(
       serialized,
       [],
       mockRunId,
@@ -2106,7 +2239,7 @@ describe('custom class serialization', () => {
     expect(hydrated[0].value).toBe(3);
   });
 
-  it('should work with step return values', () => {
+  it('should work with step return values', async () => {
     class Result {
       constructor(
         public success: boolean,
@@ -2129,16 +2262,16 @@ describe('custom class serialization', () => {
     registerSerializationClass('test/Result', Result);
 
     const result = new Result(true, 'completed');
-    const serialized = dehydrateStepReturnValue(result, [], mockRunId);
+    const serialized = await dehydrateStepReturnValue(result, [], mockRunId);
     // Step return values are hydrated with workflow revivers
-    const hydrated = hydrateWorkflowArguments(serialized, globalThis);
+    const hydrated = await hydrateWorkflowArguments(serialized, globalThis);
 
     expect(hydrated).toBeInstanceOf(Result);
     expect(hydrated.success).toBe(true);
     expect(hydrated.data).toBe('completed');
   });
 
-  it('should not serialize classes without WORKFLOW_SERIALIZE', () => {
+  it('should not serialize classes without WORKFLOW_SERIALIZE', async () => {
     class PlainClass {
       constructor(public value: string) {}
     }
@@ -2146,10 +2279,12 @@ describe('custom class serialization', () => {
     const instance = new PlainClass('test');
 
     // Should throw because PlainClass is not serializable
-    expect(() => dehydrateWorkflowArguments(instance, [], mockRunId)).toThrow();
+    await expect(
+      dehydrateWorkflowArguments(instance, [], mockRunId)
+    ).rejects.toThrow();
   });
 
-  it('should throw error when classId is missing', () => {
+  it('should throw error when classId is missing', async () => {
     // NOTE: Missing `classId` property so serializatoin will fail.
     class NoClassId {
       constructor(public value: string) {}
@@ -2168,14 +2303,14 @@ describe('custom class serialization', () => {
     // Should throw with our specific error message about missing classId
     let errorMessage = '';
     try {
-      dehydrateWorkflowArguments(instance, [], mockRunId);
+      await dehydrateWorkflowArguments(instance, [], mockRunId);
     } catch (e: any) {
       errorMessage = e.cause?.message || e.message;
     }
     expect(errorMessage).toMatch(/must have a static "classId" property/);
   });
 
-  it('should serialize class with complex data types in payload', () => {
+  it('should serialize class with complex data types in payload', async () => {
     class ComplexData {
       constructor(
         public items: Map<string, number>,
@@ -2207,8 +2342,8 @@ describe('custom class serialization', () => {
     const date = new Date('2025-01-01T00:00:00.000Z');
     const complex = new ComplexData(map, date);
 
-    const serialized = dehydrateWorkflowArguments(complex, [], mockRunId);
-    const hydrated = hydrateWorkflowArguments(serialized, globalThis);
+    const serialized = await dehydrateWorkflowArguments(complex, [], mockRunId);
+    const hydrated = await hydrateWorkflowArguments(serialized, globalThis);
 
     expect(hydrated).toBeInstanceOf(ComplexData);
     expect(hydrated.items).toBeInstanceOf(Map);
@@ -2285,75 +2420,96 @@ describe('format prefix system', () => {
     fixedTimestamp: 1714857600000,
   });
 
-  it('should encode data with format prefix', () => {
+  it('should encode data with format prefix', async () => {
     const data = { message: 'hello' };
-    const serialized = dehydrateWorkflowArguments(data, [], mockRunId);
+    const serialized = await dehydrateWorkflowArguments(data, [], mockRunId);
 
     // Check that the first 4 bytes are the format prefix "devl"
     const prefix = new TextDecoder().decode(serialized.subarray(0, 4));
     expect(prefix).toBe('devl');
   });
 
-  it('should decode prefixed data correctly', () => {
+  it('should decode prefixed data correctly', async () => {
     const data = { message: 'hello', count: 42 };
-    const serialized = dehydrateWorkflowArguments(data, [], mockRunId);
-    const hydrated = hydrateWorkflowArguments(serialized, vmGlobalThis);
+    const serialized = await dehydrateWorkflowArguments(data, [], mockRunId);
+    const hydrated = await hydrateWorkflowArguments(serialized, vmGlobalThis);
 
     expect(hydrated).toEqual({ message: 'hello', count: 42 });
   });
 
-  it('should handle all dehydrate/hydrate function pairs with format prefix', () => {
+  it('should handle all dehydrate/hydrate function pairs with format prefix', async () => {
     const testData = { test: 'data', nested: { value: 123 } };
 
     // Workflow arguments
-    const workflowArgs = dehydrateWorkflowArguments(testData, [], mockRunId);
+    const workflowArgs = (await dehydrateWorkflowArguments(
+      testData,
+      [],
+      mockRunId
+    )) as Uint8Array;
     expect(new TextDecoder().decode(workflowArgs.subarray(0, 4))).toBe('devl');
-    expect(hydrateWorkflowArguments(workflowArgs, vmGlobalThis)).toEqual(
+    expect(await hydrateWorkflowArguments(workflowArgs, vmGlobalThis)).toEqual(
       testData
     );
 
     // Workflow return value
-    const workflowReturn = dehydrateWorkflowReturnValue(testData, globalThis);
+    const workflowReturn = (await dehydrateWorkflowReturnValue(
+      testData,
+      globalThis
+    )) as Uint8Array;
     expect(new TextDecoder().decode(workflowReturn.subarray(0, 4))).toBe(
       'devl'
     );
     expect(
-      hydrateWorkflowReturnValue(workflowReturn, [], mockRunId, vmGlobalThis)
+      await hydrateWorkflowReturnValue(
+        workflowReturn,
+        [],
+        mockRunId,
+        vmGlobalThis
+      )
     ).toEqual(testData);
 
     // Step arguments
-    const stepArgs = dehydrateStepArguments(testData, globalThis);
+    const stepArgs = (await dehydrateStepArguments(
+      testData,
+      globalThis
+    )) as Uint8Array;
     expect(new TextDecoder().decode(stepArgs.subarray(0, 4))).toBe('devl');
-    expect(hydrateStepArguments(stepArgs, [], mockRunId, vmGlobalThis)).toEqual(
-      testData
-    );
+    expect(
+      await hydrateStepArguments(stepArgs, [], mockRunId, vmGlobalThis)
+    ).toEqual(testData);
 
     // Step return value
-    const stepReturn = dehydrateStepReturnValue(testData, [], mockRunId);
+    const stepReturn = (await dehydrateStepReturnValue(
+      testData,
+      [],
+      mockRunId
+    )) as Uint8Array;
     expect(new TextDecoder().decode(stepReturn.subarray(0, 4))).toBe('devl');
-    expect(hydrateStepReturnValue(stepReturn, vmGlobalThis)).toEqual(testData);
+    expect(await hydrateStepReturnValue(stepReturn, vmGlobalThis)).toEqual(
+      testData
+    );
   });
 
-  it('should throw error for unknown format prefix', () => {
+  it('should throw error for unknown format prefix', async () => {
     // Create data with an unknown 4-character format prefix
     const unknownFormat = new TextEncoder().encode('unkn{"test":true}');
 
-    expect(() => hydrateWorkflowArguments(unknownFormat, vmGlobalThis)).toThrow(
-      /Unknown serialization format/
-    );
+    await expect(
+      hydrateWorkflowArguments(unknownFormat, vmGlobalThis)
+    ).rejects.toThrow(/Unknown serialization format/);
   });
 
-  it('should throw error for data too short to contain format prefix', () => {
+  it('should throw error for data too short to contain format prefix', async () => {
     const tooShort = new TextEncoder().encode('dev');
 
-    expect(() => hydrateWorkflowArguments(tooShort, vmGlobalThis)).toThrow(
-      /Data too short to contain format prefix/
-    );
+    await expect(
+      hydrateWorkflowArguments(tooShort, vmGlobalThis)
+    ).rejects.toThrow(/Data too short to contain format prefix/);
   });
 });
 
 describe('decodeFormatPrefix legacy compatibility', () => {
-  it('should handle legacy object data (non-Uint8Array)', () => {
+  it('should handle legacy object data (non-Uint8Array)', async () => {
     const legacyData = { message: 'hello', count: 42 };
     const result = decodeFormatPrefix(legacyData);
 
@@ -2365,7 +2521,7 @@ describe('decodeFormatPrefix legacy compatibility', () => {
     expect(JSON.parse(decoded)).toEqual(legacyData);
   });
 
-  it('should handle legacy array data (non-Uint8Array)', () => {
+  it('should handle legacy array data (non-Uint8Array)', async () => {
     const legacyData = [1, 2, 'three', { nested: true }];
     const result = decodeFormatPrefix(legacyData);
 
@@ -2376,7 +2532,7 @@ describe('decodeFormatPrefix legacy compatibility', () => {
     expect(JSON.parse(decoded)).toEqual(legacyData);
   });
 
-  it('should handle legacy undefined data (non-Uint8Array)', () => {
+  it('should handle legacy undefined data (non-Uint8Array)', async () => {
     const legacyData = undefined;
     const result = decodeFormatPrefix(legacyData);
 
@@ -2388,7 +2544,7 @@ describe('decodeFormatPrefix legacy compatibility', () => {
     expect(result.payload.length).toBe(0);
   });
 
-  it('should still correctly handle v2 Uint8Array data', () => {
+  it('should still correctly handle v2 Uint8Array data', async () => {
     // Create valid v2 data with 'devl' prefix
     const payload = new TextEncoder().encode('["test"]');
     const v2Data = new Uint8Array(4 + payload.length);
@@ -2402,5 +2558,270 @@ describe('decodeFormatPrefix legacy compatibility', () => {
 
     const decoded = new TextDecoder().decode(result.payload);
     expect(decoded).toBe('["test"]');
+  });
+});
+
+// =============================================================================
+// Encryption Integration Tests
+// =============================================================================
+
+describe('encryption integration', () => {
+  // Create a mock encryptor that actually encrypts/decrypts
+  const createTestEncryptor = (): Encryptor => {
+    // Simple XOR-based "encryption" for testing (NOT secure, just for tests)
+    const xorKey = 0x42;
+
+    return {
+      async encrypt(data: Uint8Array, context: { runId: string }) {
+        // Add 'encr' prefix and XOR the data
+        const result = new Uint8Array(4 + data.length);
+        result.set(new TextEncoder().encode('encr'), 0);
+        for (let i = 0; i < data.length; i++) {
+          result[4 + i] =
+            data[i] ^
+            xorKey ^
+            (context.runId.charCodeAt(i % context.runId.length) & 0xff);
+        }
+        return result;
+      },
+      async decrypt(data: Uint8Array, context: { runId: string }) {
+        // Check prefix and XOR back
+        const prefix = new TextDecoder().decode(data.subarray(0, 4));
+        if (prefix !== 'encr') {
+          throw new Error(`Invalid prefix: ${prefix}`);
+        }
+        const result = new Uint8Array(data.length - 4);
+        for (let i = 0; i < result.length; i++) {
+          result[i] =
+            data[4 + i] ^
+            xorKey ^
+            (context.runId.charCodeAt(i % context.runId.length) & 0xff);
+        }
+        return result;
+      },
+    };
+  };
+
+  it('should encrypt workflow arguments when encryptor is provided', async () => {
+    const testEncryptor = createTestEncryptor();
+    const testRunId = 'wrun_test123';
+    const testValue = { message: 'secret data', count: 42 };
+
+    const encrypted = await _dehydrateWorkflowArguments(
+      testValue,
+      testRunId,
+      testEncryptor,
+      [],
+      globalThis,
+      false
+    );
+
+    // Should be a Uint8Array with 'encr' prefix
+    expect(encrypted).toBeInstanceOf(Uint8Array);
+    const prefix = new TextDecoder().decode(
+      (encrypted as Uint8Array).subarray(0, 4)
+    );
+    expect(prefix).toBe('encr');
+  });
+
+  it('should decrypt workflow arguments when encryptor is provided', async () => {
+    const testEncryptor = createTestEncryptor();
+    const testRunId = 'wrun_test123';
+    const testValue = { message: 'secret data', count: 42 };
+
+    const encrypted = await _dehydrateWorkflowArguments(
+      testValue,
+      testRunId,
+      testEncryptor,
+      [],
+      globalThis,
+      false
+    );
+
+    const decrypted = await _hydrateWorkflowArguments(
+      encrypted,
+      testRunId,
+      testEncryptor,
+      globalThis,
+      {}
+    );
+
+    expect(decrypted).toEqual(testValue);
+  });
+
+  it('should fail to decrypt with wrong runId', async () => {
+    const testEncryptor = createTestEncryptor();
+    const testRunId = 'wrun_test123';
+    const wrongRunId = 'wrun_wrong456';
+    const testValue = { message: 'secret data' };
+
+    const encrypted = await _dehydrateWorkflowArguments(
+      testValue,
+      testRunId,
+      testEncryptor,
+      [],
+      globalThis,
+      false
+    );
+
+    // Decrypting with wrong runId should produce garbage (in real crypto would fail auth)
+    // Our simple XOR produces bytes that aren't valid JSON, so hydration throws
+    await expect(
+      _hydrateWorkflowArguments(
+        encrypted,
+        wrongRunId,
+        testEncryptor,
+        globalThis,
+        {}
+      )
+    ).rejects.toThrow();
+  });
+
+  it('should not encrypt when no encryptor is provided', async () => {
+    const noEncryptor: Encryptor = {};
+    const testRunId = 'wrun_test123';
+    const testValue = { message: 'plain data' };
+
+    const serialized = await _dehydrateWorkflowArguments(
+      testValue,
+      testRunId,
+      noEncryptor,
+      [],
+      globalThis,
+      false
+    );
+
+    // Should be a Uint8Array with 'devl' prefix (not encrypted)
+    expect(serialized).toBeInstanceOf(Uint8Array);
+    const prefix = new TextDecoder().decode(
+      (serialized as Uint8Array).subarray(0, 4)
+    );
+    expect(prefix).toBe('devl');
+  });
+
+  it('should handle unencrypted data when encryptor is provided', async () => {
+    const testEncryptor = createTestEncryptor();
+    const testRunId = 'wrun_test123';
+    const testValue = { message: 'plain data' };
+
+    // Serialize without encryption
+    const serialized = await _dehydrateWorkflowArguments(
+      testValue,
+      testRunId,
+      {}, // no encryptor
+      [],
+      globalThis,
+      false
+    );
+
+    // Hydrate with encryptor - should still work because data isn't encrypted
+    const hydrated = await _hydrateWorkflowArguments(
+      serialized,
+      testRunId,
+      testEncryptor,
+      globalThis,
+      {}
+    );
+
+    expect(hydrated).toEqual(testValue);
+  });
+
+  it('should encrypt step arguments', async () => {
+    const testEncryptor = createTestEncryptor();
+    const testRunId = 'wrun_test123';
+    const testValue = ['arg1', { nested: 'value' }, 123];
+
+    // dehydrateStepArguments signature: (value, runId, encryptor, global, v1Compat)
+    const encrypted = await _dehydrateStepArguments(
+      testValue,
+      testRunId,
+      testEncryptor,
+      globalThis,
+      false
+    );
+
+    // Should have 'encr' prefix
+    expect(encrypted).toBeInstanceOf(Uint8Array);
+    const prefix = new TextDecoder().decode(
+      (encrypted as Uint8Array).subarray(0, 4)
+    );
+    expect(prefix).toBe('encr');
+
+    // Should round-trip correctly
+    // hydrateStepArguments signature: (value, runId, encryptor, ops, global)
+    const decrypted = await _hydrateStepArguments(
+      encrypted,
+      testRunId,
+      testEncryptor,
+      [],
+      globalThis
+    );
+
+    expect(decrypted).toEqual(testValue);
+  });
+
+  it('should encrypt step return values', async () => {
+    const testEncryptor = createTestEncryptor();
+    const testRunId = 'wrun_test123';
+    const testValue = { result: 'success', data: [1, 2, 3] };
+
+    const encrypted = await _dehydrateStepReturnValue(
+      testValue,
+      testRunId,
+      testEncryptor,
+      [],
+      globalThis
+    );
+
+    // Should have 'encr' prefix
+    expect(encrypted).toBeInstanceOf(Uint8Array);
+    const prefix = new TextDecoder().decode(
+      (encrypted as Uint8Array).subarray(0, 4)
+    );
+    expect(prefix).toBe('encr');
+
+    // Should round-trip correctly
+    const decrypted = await _hydrateStepReturnValue(
+      encrypted,
+      testRunId,
+      testEncryptor,
+      globalThis
+    );
+
+    expect(decrypted).toEqual(testValue);
+  });
+
+  it('should encrypt workflow return values', async () => {
+    const testEncryptor = createTestEncryptor();
+    const testRunId = 'wrun_test123';
+    const testValue = { final: 'result', timestamp: Date.now() };
+
+    // dehydrateWorkflowReturnValue signature: (value, runId, encryptor, global)
+    const encrypted = await _dehydrateWorkflowReturnValue(
+      testValue,
+      testRunId,
+      testEncryptor,
+      globalThis
+    );
+
+    // Should have 'encr' prefix
+    expect(encrypted).toBeInstanceOf(Uint8Array);
+    const prefix = new TextDecoder().decode(
+      (encrypted as Uint8Array).subarray(0, 4)
+    );
+    expect(prefix).toBe('encr');
+
+    // Should round-trip correctly
+    // hydrateWorkflowReturnValue signature: (value, runId, encryptor, ops, global, extraRevivers)
+    const decrypted = await _hydrateWorkflowReturnValue(
+      encrypted,
+      testRunId,
+      testEncryptor,
+      [],
+      globalThis,
+      {}
+    );
+
+    expect(decrypted).toEqual(testValue);
   });
 });

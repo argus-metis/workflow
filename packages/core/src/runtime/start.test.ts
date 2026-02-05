@@ -81,8 +81,12 @@ describe('start', () => {
     let mockQueue: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
-      mockEventsCreate = vi.fn().mockResolvedValue({
-        run: { runId: 'wrun_test123', status: 'pending' },
+      // Mock events.create to return the runId that was passed to it
+      mockEventsCreate = vi.fn().mockImplementation((_runId, event) => {
+        const runId = event.runId || 'wrun_fallback';
+        return Promise.resolve({
+          run: { runId, status: 'pending' },
+        });
       });
       mockQueue = vi.fn().mockResolvedValue(undefined);
 

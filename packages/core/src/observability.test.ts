@@ -1,5 +1,6 @@
 import { inspect } from 'node:util';
 import { WORKFLOW_DESERIALIZE, WORKFLOW_SERIALIZE } from '@workflow/serde';
+import type { Encryptor, World } from '@workflow/world';
 import { describe, expect, it } from 'vitest';
 import { registerSerializationClass } from './class-serialization.js';
 import {
@@ -13,7 +14,39 @@ import {
   STREAM_REF_TYPE,
   truncateId,
 } from './observability.js';
-import { dehydrateStepReturnValue } from './serialization.js';
+import { dehydrateStepReturnValue as _dehydrateStepReturnValue } from './serialization.js';
+
+// Mock encryptor without encryption for tests
+const mockEncryptor: Encryptor = {};
+
+// Mock world for tests
+const mockWorld = {
+  queue: async () => ({ messageId: 'msg_test' }),
+  createQueueHandler: () => async () => new Response(),
+  readFromStorage: async () => new Uint8Array(),
+  writeToStorage: async () => {},
+  deleteFromStorage: async () => {},
+  readFromStream: async () => new ReadableStream(),
+  writeToStream: async () => {},
+  writeToStreamMulti: async () => {},
+  closeStream: async () => {},
+  getDeploymentId: async () => 'test-deployment',
+  events: {
+    create: async () => ({ run: null }),
+    list: async () => ({ data: [], cursor: null, hasMore: false, run: null }),
+  },
+} as unknown as World;
+
+const mockRunId = 'wrun_test123';
+
+// Wrapper for dehydrateStepReturnValue to use in tests
+async function dehydrateStepReturnValue(
+  value: unknown,
+  ops: Promise<any>[] = [],
+  runId: string = mockRunId
+): Promise<Uint8Array | unknown> {
+  return _dehydrateStepReturnValue(value, runId, mockEncryptor, ops);
+}
 
 describe('ClassInstanceRef', () => {
   describe('constructor and properties', () => {
@@ -332,10 +365,10 @@ describe('hydrateResourceIO with custom class instances', () => {
   (TestPoint as any).classId = 'test//TestPoint';
   registerSerializationClass('test//TestPoint', TestPoint);
 
-  it('should convert Instance type to ClassInstanceRef in step output', () => {
+  it('should convert Instance type to ClassInstanceRef in step output', async () => {
     // Simulate serialized step data with a custom class instance
     const point = new TestPoint(3, 4);
-    const serialized = dehydrateStepReturnValue(point, [], 'wrun_test');
+    const serialized = await dehydrateStepReturnValue(point, [], 'wrun_test');
 
     // Create a step resource with serialized output
     const step = {
@@ -346,7 +379,7 @@ describe('hydrateResourceIO with custom class instances', () => {
 
     // Hydrate the step - this should convert Instance to ClassInstanceRef
     // because the class is not registered in the o11y context (streamPrintRevivers)
-    const hydrated = hydrateResourceIO(step);
+    const hydrated = await hydrateResourceIO(step, mockWorld);
 
     // The output should be a ClassInstanceRef
     expect(isClassInstanceRef(hydrated.output)).toBe(true);

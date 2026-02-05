@@ -1,16 +1,19 @@
 import { waitUntil } from '@vercel/functions';
 import { WorkflowRuntimeError } from '@workflow/errors';
-import { withResolvers } from '@workflow/utils';
 import type { WorkflowInvokePayload, World } from '@workflow/world';
 import { isLegacySpecVersion, SPEC_VERSION_CURRENT } from '@workflow/world';
-import { Run } from './run.js';
+import { monotonicFactory } from 'ulid';
 import type { Serializable } from '../schemas.js';
 import { dehydrateWorkflowArguments } from '../serialization.js';
 import * as Attribute from '../telemetry/semantic-conventions.js';
 import { serializeTraceCarrier, trace } from '../telemetry.js';
 import { waitedUntil } from '../util.js';
 import { version as workflowCoreVersion } from '../version.js';
+import { Run } from './run.js';
 import { getWorld } from './world.js';
+
+/** ULID generator for client-side runId generation */
+const ulid = monotonicFactory();
 
 export interface StartOptions {
   /**
@@ -102,8 +105,10 @@ export async function start<TArgs extends unknown[], TResult>(
       const world = opts?.world ?? getWorld();
       const deploymentId = opts.deploymentId ?? (await world.getDeploymentId());
       const ops: Promise<void>[] = [];
-      const { promise: runIdPromise, resolve: resolveRunId } =
-        withResolvers<string>();
+
+      // Generate runId client-side so we can use it for encryption
+      // The server will accept and use this runId
+      const runId = `wrun_${ulid()}`;
 
       // Serialize current trace context to propagate across queue boundary
       const traceCarrier = await serializeTraceCarrier();
@@ -112,11 +117,12 @@ export async function start<TArgs extends unknown[], TResult>(
       const v1Compat = isLegacySpecVersion(specVersion);
 
       // Create run via run_created event (event-sourced architecture)
-      // Pass null for runId - the server generates it and returns it in the response
-      const workflowArguments = dehydrateWorkflowArguments(
+      // Serialize and encrypt workflow arguments with the client-generated runId
+      const workflowArguments = await dehydrateWorkflowArguments(
         args,
+        runId,
+        world,
         ops,
-        runIdPromise,
         globalThis,
         v1Compat
       );
@@ -125,6 +131,7 @@ export async function start<TArgs extends unknown[], TResult>(
         {
           eventType: 'run_created',
           specVersion,
+          runId, // Pass client-generated runId to server
           eventData: {
             deploymentId: deploymentId,
             workflowName: workflowName,
@@ -142,8 +149,12 @@ export async function start<TArgs extends unknown[], TResult>(
         );
       }
 
-      const runId = result.run.runId;
-      resolveRunId(runId);
+      // Verify server accepted our runId (it should match)
+      if (result.run.runId !== runId) {
+        throw new WorkflowRuntimeError(
+          `Server returned different runId than requested: expected ${runId}, got ${result.run.runId}`
+        );
+      }
 
       waitUntil(
         Promise.all(ops).catch((err) => {

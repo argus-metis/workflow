@@ -262,11 +262,16 @@ const stepHandler = getWorldHandlers().createQueueHandler(
             // via Promise.all(ops) - their timing is not included in this measurement.
             const deserializeStartTime = Date.now();
             const ops: Promise<void>[] = [];
-            const hydratedInput = hydrateStepArguments(
+            const hydratedInput = (await hydrateStepArguments(
               step.input,
-              ops,
-              workflowRunId
-            );
+              workflowRunId,
+              world,
+              ops
+            )) as {
+              args: unknown[];
+              thisVal?: unknown;
+              closureVars?: Record<string, any>;
+            };
             const deserializeTimeMs = Date.now() - deserializeStartTime;
 
             const args = hydratedInput.args;
@@ -311,7 +316,12 @@ const stepHandler = getWorldHandlers().createQueueHandler(
             // The workflow runtime must be resilient to the below code not executing on a failed step
             // Track serialization time for observability
             const serializeStartTime = Date.now();
-            result = dehydrateStepReturnValue(result, ops, workflowRunId);
+            result = await dehydrateStepReturnValue(
+              result,
+              workflowRunId,
+              world,
+              ops
+            );
             const serializeTimeMs = Date.now() - serializeStartTime;
 
             span?.setAttributes({

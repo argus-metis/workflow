@@ -3,7 +3,7 @@ import { ERROR_SLUGS, WorkflowRuntimeError } from '@workflow/errors';
 import { withResolvers } from '@workflow/utils';
 import { getPort } from '@workflow/utils/get-port';
 import { parseWorkflowName } from '@workflow/utils/parse-name';
-import type { Event, WorkflowRun } from '@workflow/world';
+import type { Event, WorkflowRun, World } from '@workflow/world';
 import * as nanoid from 'nanoid';
 import { monotonicFactory } from 'ulid';
 import { EventConsumerResult, EventsConsumer } from './events-consumer.js';
@@ -34,7 +34,8 @@ import { createSleep } from './workflow/sleep.js';
 export async function runWorkflow(
   workflowCode: string,
   workflowRun: WorkflowRun,
-  events: Event[]
+  events: Event[],
+  world: World
 ): Promise<Uint8Array | unknown> {
   return trace(`workflow.run ${workflowRun.workflowName}`, async (span) => {
     span?.setAttributes({
@@ -78,6 +79,8 @@ export async function runWorkflow(
       generateUlid: () => ulid(+startedAt),
       generateNanoid,
       invocationsQueue: new Map(),
+      runId: workflowRun.runId,
+      world,
     };
 
     // Subscribe to the events log to update the timestamp in the vm context
@@ -624,7 +627,12 @@ export async function runWorkflow(
       );
     }
 
-    const args = hydrateWorkflowArguments(workflowRun.input, vmGlobalThis);
+    const args = (await hydrateWorkflowArguments(
+      workflowRun.input,
+      workflowRun.runId,
+      world,
+      vmGlobalThis
+    )) as unknown[];
 
     span?.setAttributes({
       ...Attribute.WorkflowArgumentsCount(args.length),
@@ -636,7 +644,12 @@ export async function runWorkflow(
       workflowDiscontinuation.promise,
     ]);
 
-    const dehydrated = dehydrateWorkflowReturnValue(result, vmGlobalThis);
+    const dehydrated = await dehydrateWorkflowReturnValue(
+      result,
+      workflowRun.runId,
+      world,
+      vmGlobalThis
+    );
 
     span?.setAttributes({
       ...Attribute.WorkflowResultType(typeof result),

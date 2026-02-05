@@ -23,6 +23,65 @@ import type {
   StepWithoutData,
 } from './steps.js';
 
+/**
+ * Context for encryption/decryption operations.
+ * The runId is used as part of key derivation to ensure per-run isolation.
+ */
+export interface EncryptionContext {
+  runId: string;
+}
+
+/**
+ * Key material returned by getKeyMaterial for external decryption (e.g., o11y tooling).
+ */
+export interface KeyMaterial {
+  /** Base key for derivation (raw bytes) */
+  key: Uint8Array;
+  /**
+   * Additional context for key derivation (combined with runId).
+   * For world-vercel: { projectId: string }
+   */
+  derivationContext: Record<string, string>;
+  /** Encryption algorithm */
+  algorithm: 'AES-256-GCM';
+  /** Key derivation function */
+  kdf: 'HKDF-SHA256';
+}
+
+/**
+ * Optional encryption interface for World implementations.
+ * When implemented, the serialization layer will automatically
+ * encrypt data before storage and decrypt on retrieval.
+ */
+export interface Encryptor {
+  /**
+   * Encrypt serialized data for storage.
+   * @param data - Serialized data (has format prefix like "devl")
+   * @param context - Context containing runId for key derivation
+   * @returns Encrypted data with "encr" format prefix
+   */
+  encrypt?(data: Uint8Array, context: EncryptionContext): Promise<Uint8Array>;
+
+  /**
+   * Decrypt data from storage.
+   * @param data - Encrypted data (has "encr" format prefix)
+   * @param context - Context containing runId for key derivation
+   * @returns Decrypted data with original format prefix
+   */
+  decrypt?(data: Uint8Array, context: EncryptionContext): Promise<Uint8Array>;
+
+  /**
+   * Get key material for external decryption (e.g., o11y tooling).
+   * @param options - Implementation-specific options
+   *   - world-vercel: { deploymentId: string }
+   *   - Other implementations may require different options
+   * @returns Key material for deriving per-run keys, or null if unavailable
+   */
+  getKeyMaterial?(
+    options: Record<string, unknown>
+  ): Promise<KeyMaterial | null>;
+}
+
 export interface Streamer {
   writeToStream(
     name: string,
@@ -171,7 +230,7 @@ export interface Storage {
 /**
  * The "World" interface represents how Workflows are able to communicate with the outside world.
  */
-export interface World extends Queue, Storage, Streamer {
+export interface World extends Queue, Storage, Streamer, Encryptor {
   /**
    * A function that will be called to start any background tasks needed by the World implementation.
    * For example, in the case of a queue backed World, this would start the queue processing.

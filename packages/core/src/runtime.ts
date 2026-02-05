@@ -199,7 +199,8 @@ export function workflowEntrypoint(
               const result = await runWorkflow(
                 workflowCode,
                 workflowRun,
-                events
+                events,
+                world
               );
 
               // Complete the workflow run via event (event-sourced architecture)

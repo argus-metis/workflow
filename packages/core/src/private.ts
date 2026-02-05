@@ -2,6 +2,7 @@
  * Utils used by the bundler when transforming code
  */
 
+import type { World } from '@workflow/world';
 import type { EventsConsumer } from './events-consumer.js';
 import type { QueueItem } from './global.js';
 import type { Serializable } from './schemas.js';
@@ -46,4 +47,8 @@ export interface WorkflowOrchestratorContext {
   onWorkflowError: (error: Error) => void;
   generateUlid: () => string;
   generateNanoid: () => string;
+  /** The workflow run ID */
+  runId: string;
+  /** The World instance for encryption/decryption */
+  world: World;
 }
