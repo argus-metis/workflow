@@ -254,7 +254,7 @@ export class AppController {
         `Testing queue-based health check for endpoint: ${endpoint}, timeout: ${timeout}ms`
       );
 
-      const world = getWorld();
+      const world = await getWorld();
       const result = await healthCheck(world, endpoint as 'workflow' | 'step', {
         timeout,
       });

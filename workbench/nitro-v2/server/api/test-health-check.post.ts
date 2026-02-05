@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
       `Testing queue-based health check for endpoint: ${endpoint}, timeout: ${timeout}ms`
     );
 
-    const world = getWorld();
+    const world = await getWorld();
     const result = await healthCheck(world, endpoint, { timeout });
 
     console.log(`Health check result:`, result);

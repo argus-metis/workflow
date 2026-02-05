@@ -41,9 +41,12 @@ In **Next.js**, the `world.setup()` function needs to be added to `instrumentati
 // instrumentation.ts
 
 if (process.env.NEXT_RUNTIME !== "edge") {
-  import("workflow/api").then(async ({ getWorld }) => {
-    // start listening to the jobs.
-    await getWorld().start?.();
+  import("workflow/runtime").then(async ({ getWorld }) => {
+    const world = await getWorld();
+    if (world.start) {
+      console.log('Starting workers for pg-boss queues...');
+      await world.start();
+    }
   });
 }
 ```

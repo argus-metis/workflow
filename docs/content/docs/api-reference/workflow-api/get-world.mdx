@@ -3,14 +3,14 @@ title: getWorld
 description: Access the World instance for low-level storage, queuing, and streaming operations.
 ---
 
-Retrieves the World instance for direct access to workflow storage, queuing, and streaming backends. This function returns a `World` which provides low-level access to manage workflow runs, steps, events, and hooks.
+Retrieves the World instance for direct access to workflow storage, queuing, and streaming backends. This async function returns a `Promise<World>` which provides low-level access to manage workflow runs, steps, events, and hooks.
 
 Use this function when you need direct access to the underlying workflow infrastructure, such as listing all runs, querying events, or implementing custom workflow management logic.
 
 ```typescript lineNumbers
 import { getWorld } from "workflow/runtime";
 
-const world = getWorld();
+const world = await getWorld();
 ```
 
 ## API Signature
@@ -21,7 +21,7 @@ This function does not accept any parameters.
 
 ### Returns
 
-Returns a `World` object:
+Returns a `Promise<World>` object:
 
 <TSDoc
 definition={`
@@ -44,7 +44,7 @@ export async function GET(req: Request) {
   const cursor = url.searchParams.get("cursor") ?? undefined;
 
   try {
-    const world = getWorld(); // [!code highlight]
+    const world = await getWorld(); // [!code highlight]
     const runs = await world.runs.list({
       pagination: { cursor },
     });
@@ -74,7 +74,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const world = getWorld(); // [!code highlight]
+    const world = await getWorld(); // [!code highlight]
     const run = await world.runs.cancel(runId); // [!code highlight]
 
     return Response.json({ status: run.status });
