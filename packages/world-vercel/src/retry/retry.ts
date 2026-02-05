@@ -1,11 +1,11 @@
 /** Default maximum number of retry attempts */
-export const DEFAULT_MAX_RETRIES = 3;
+export const DEFAULT_MAX_RETRIES = 5;
 
 /** Default base delay in milliseconds for exponential backoff */
-export const DEFAULT_BASE_DELAY = 1000;
+export const DEFAULT_BASE_DELAY = 5000;
 
 /** Default maximum delay in milliseconds (cap for exponential backoff) */
-export const DEFAULT_MAX_DELAY = 10000;
+export const DEFAULT_MAX_DELAY = 100000;
 
 /**
  * Options for the withRetry utility.
