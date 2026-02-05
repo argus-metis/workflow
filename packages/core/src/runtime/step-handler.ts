@@ -7,11 +7,7 @@ import {
 } from '@workflow/errors';
 import { pluralize } from '@workflow/utils';
 import { getPort } from '@workflow/utils/get-port';
-import {
-  SPEC_VERSION_CURRENT,
-  StepInvokePayloadSchema,
-  type World,
-} from '@workflow/world';
+import { SPEC_VERSION_CURRENT, StepInvokePayloadSchema } from '@workflow/world';
 import { runtimeLogger, stepLogger } from '../logger.js';
 import { getStepFunction } from '../private.js';
 import {

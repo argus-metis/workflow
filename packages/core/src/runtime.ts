@@ -5,7 +5,6 @@ import {
   SPEC_VERSION_CURRENT,
   WorkflowInvokePayloadSchema,
   type WorkflowRun,
-  type World,
 } from '@workflow/world';
 import { WorkflowSuspension } from './global.js';
 import { runtimeLogger } from './logger.js';
