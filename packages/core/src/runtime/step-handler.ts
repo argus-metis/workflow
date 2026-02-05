@@ -62,10 +62,11 @@ const stepHandler = (worldHandlers: WorldHandlers) =>
       return await withTraceContext(traceContext, async () => {
         // Extract the step name from the topic name
         const stepName = metadata.queueName.slice('__wkf_step_'.length);
+        const world = await getWorld();
 
         // Get the port early to avoid async operations during step execution
         const port = await getPort();
-        const world = await getWorld();
+
         return trace(
           `step ${stepName}`,
           { kind: await getSpanKind('CONSUMER'), links: spanLinks },
@@ -168,11 +169,18 @@ const stepHandler = (worldHandlers: WorldHandlers) =>
               });
 
               // Re-invoke the workflow to handle the failed step
-              await queueMessage(world, `__wkf_workflow_${workflowName}`, {
-                runId: workflowRunId,
-                traceCarrier: await serializeTraceCarrier(),
-                requestedAt: new Date(),
-              });
+              await queueMessage(
+                world,
+                `__wkf_workflow_${workflowName}`,
+                {
+                  runId: workflowRunId,
+                  traceCarrier: await serializeTraceCarrier(),
+                  requestedAt: new Date(),
+                },
+                {
+                  headers: { 'x-workflow-run-id': workflowRunId },
+                }
+              );
               return;
             }
 
@@ -211,11 +219,18 @@ const stepHandler = (worldHandlers: WorldHandlers) =>
                   'cancelled',
                 ].includes(step.status);
                 if (isTerminalStep) {
-                  await queueMessage(world, `__wkf_workflow_${workflowName}`, {
-                    runId: workflowRunId,
-                    traceCarrier: await serializeTraceCarrier(),
-                    requestedAt: new Date(),
-                  });
+                  await queueMessage(
+                    world,
+                    `__wkf_workflow_${workflowName}`,
+                    {
+                      runId: workflowRunId,
+                      traceCarrier: await serializeTraceCarrier(),
+                      requestedAt: new Date(),
+                    },
+                    {
+                      headers: { 'x-workflow-run-id': workflowRunId },
+                    }
+                  );
                 }
                 return;
               }
@@ -479,11 +494,18 @@ const stepHandler = (worldHandlers: WorldHandlers) =>
               }
             }
 
-            await queueMessage(world, `__wkf_workflow_${workflowName}`, {
-              runId: workflowRunId,
-              traceCarrier: await serializeTraceCarrier(),
-              requestedAt: new Date(),
-            });
+            await queueMessage(
+              world,
+              `__wkf_workflow_${workflowName}`,
+              {
+                runId: workflowRunId,
+                traceCarrier: await serializeTraceCarrier(),
+                requestedAt: new Date(),
+              },
+              {
+                headers: { 'x-workflow-run-id': workflowRunId },
+              }
+            );
           }
         );
       });

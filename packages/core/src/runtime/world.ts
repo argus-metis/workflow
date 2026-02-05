@@ -27,6 +27,11 @@ function defaultWorld(): 'vercel' | 'local' {
   return 'local';
 }
 
+/**
+ * This hides the dynamic import behind a function to prevent the bundler from
+ * trying to resolve it at build time, instead of at runtime, since the world
+ * being imported might not exist at build time.
+ */
 const dynamicImport = new Function('specifier', 'return import(specifier)') as (
   specifier: string
 ) => Promise<any>;
