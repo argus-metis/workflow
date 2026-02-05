@@ -6,10 +6,16 @@ import { createVercelWorld } from '@workflow/world-vercel';
 
 const WorldCache = Symbol.for('@workflow/world//cache');
 const StubbedWorldCache = Symbol.for('@workflow/world//stubbedCache');
+const WorldCachePromise = Symbol.for('@workflow/world//cachePromise');
+const StubbedWorldCachePromise = Symbol.for(
+  '@workflow/world//stubbedCachePromise'
+);
 
 const globalSymbols: typeof globalThis & {
   [WorldCache]?: World;
   [StubbedWorldCache]?: World;
+  [WorldCachePromise]?: Promise<World>;
+  [StubbedWorldCachePromise]?: Promise<World>;
 } = globalThis;
 
 function defaultWorld(): 'vercel' | 'local' {
@@ -98,7 +104,11 @@ export const getWorldHandlers = async (): Promise<WorldHandlers> => {
   if (globalSymbols[StubbedWorldCache]) {
     return globalSymbols[StubbedWorldCache];
   }
-  const _world = await createWorld();
+  // Store the promise immediately to prevent race conditions with concurrent calls
+  if (!globalSymbols[StubbedWorldCachePromise]) {
+    globalSymbols[StubbedWorldCachePromise] = createWorld();
+  }
+  const _world = await globalSymbols[StubbedWorldCachePromise];
   globalSymbols[StubbedWorldCache] = _world;
   return {
     createQueueHandler: _world.createQueueHandler,
@@ -109,8 +119,12 @@ export const getWorld = async (): Promise<World> => {
   if (globalSymbols[WorldCache]) {
     return globalSymbols[WorldCache];
   }
-  globalSymbols[WorldCache] = await createWorld();
-  return Promise.resolve(globalSymbols[WorldCache]);
+  // Store the promise immediately to prevent race conditions with concurrent calls
+  if (!globalSymbols[WorldCachePromise]) {
+    globalSymbols[WorldCachePromise] = createWorld();
+  }
+  globalSymbols[WorldCache] = await globalSymbols[WorldCachePromise];
+  return globalSymbols[WorldCache];
 };
 
 /**
@@ -120,4 +134,6 @@ export const getWorld = async (): Promise<World> => {
 export const setWorld = (world: World | undefined): void => {
   globalSymbols[WorldCache] = world;
   globalSymbols[StubbedWorldCache] = world;
+  globalSymbols[WorldCachePromise] = undefined;
+  globalSymbols[StubbedWorldCachePromise] = undefined;
 };
