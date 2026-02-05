@@ -11,7 +11,7 @@ export interface RetryOptions {
   /**
    * Base delay in milliseconds for exponential backoff.
    * Actual delays will be: baseDelay, baseDelay*2, baseDelay*4, etc.
-   * @default 100
+   * @default 1000
    */
   baseDelay?: number;
 
@@ -67,7 +67,7 @@ function calculateBackoff(
   maxDelay: number
 ): number {
   // Exponential: baseDelay * 2^attempt
-  const exponentialDelay = baseDelay * Math.pow(2, attempt);
+  const exponentialDelay = baseDelay * 2 ** attempt;
   // Add jitter (±25%) to prevent thundering herd
   const jitter = exponentialDelay * 0.25 * (Math.random() * 2 - 1);
   return Math.min(exponentialDelay + jitter, maxDelay);
@@ -112,7 +112,7 @@ export async function withRetry<T>(
 ): Promise<T> {
   const {
     maxRetries = 3,
-    baseDelay = 100,
+    baseDelay = 1000,
     maxDelay = 10000,
     shouldRetry = isRateLimitError,
     getRetryAfter,
