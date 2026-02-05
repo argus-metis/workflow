@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isRateLimitError, withRetry } from './retry.js';
+import { DEFAULT_MAX_RETRIES, isRateLimitError, withRetry } from './retry.js';
 
 describe('isRateLimitError', () => {
   it('returns true for errors with status 429', () => {
@@ -198,7 +198,7 @@ describe('withRetry', () => {
     }
   });
 
-  it('defaults to 3 max retries', async () => {
+  it(`defaults to ${DEFAULT_MAX_RETRIES} max retries`, async () => {
     const error429 = { status: 429 };
     const fn = vi.fn().mockRejectedValue(error429);
 
@@ -212,6 +212,6 @@ describe('withRetry', () => {
     await resultPromise;
 
     expect(caughtError).toEqual(error429);
-    expect(fn).toHaveBeenCalledTimes(4); // Initial + 3 retries
+    expect(fn).toHaveBeenCalledTimes(DEFAULT_MAX_RETRIES + 1); // Initial + retries
   });
 });

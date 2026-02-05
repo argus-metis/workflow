@@ -1,23 +1,32 @@
+/** Default maximum number of retry attempts */
+export const DEFAULT_MAX_RETRIES = 3;
+
+/** Default base delay in milliseconds for exponential backoff */
+export const DEFAULT_BASE_DELAY = 1000;
+
+/** Default maximum delay in milliseconds (cap for exponential backoff) */
+export const DEFAULT_MAX_DELAY = 10000;
+
 /**
  * Options for the withRetry utility.
  */
 export interface RetryOptions {
   /**
    * Maximum number of retry attempts (not including the initial attempt).
-   * @default 3
+   * @default DEFAULT_MAX_RETRIES
    */
   maxRetries?: number;
 
   /**
    * Base delay in milliseconds for exponential backoff.
    * Actual delays will be: baseDelay, baseDelay*2, baseDelay*4, etc.
-   * @default 1000
+   * @default DEFAULT_BASE_DELAY
    */
   baseDelay?: number;
 
   /**
    * Maximum delay in milliseconds (cap for exponential backoff).
-   * @default 10000
+   * @default DEFAULT_MAX_DELAY
    */
   maxDelay?: number;
 
@@ -111,9 +120,9 @@ export async function withRetry<T>(
   options: RetryOptions = {}
 ): Promise<T> {
   const {
-    maxRetries = 3,
-    baseDelay = 1000,
-    maxDelay = 10000,
+    maxRetries = DEFAULT_MAX_RETRIES,
+    baseDelay = DEFAULT_BASE_DELAY,
+    maxDelay = DEFAULT_MAX_DELAY,
     shouldRetry = isRateLimitError,
     getRetryAfter,
     onRetry,
