@@ -81,11 +81,11 @@ describe('start', () => {
     let mockQueue: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
-      // Mock events.create to return the runId that was passed to it
-      mockEventsCreate = vi.fn().mockImplementation((_runId, event) => {
-        const runId = event.runId || 'wrun_fallback';
+      // Mock events.create to return the runId that was passed as first argument
+      mockEventsCreate = vi.fn().mockImplementation((runId, _event) => {
+        const effectiveRunId = runId || 'wrun_fallback';
         return Promise.resolve({
-          run: { runId, status: 'pending' },
+          run: { runId: effectiveRunId, status: 'pending' },
         });
       });
       mockQueue = vi.fn().mockResolvedValue(undefined);
@@ -109,7 +109,7 @@ describe('start', () => {
       await start(validWorkflow, []);
 
       expect(mockEventsCreate).toHaveBeenCalledWith(
-        null,
+        expect.stringMatching(/^wrun_/), // Client-generated runId
         expect.objectContaining({
           eventType: 'run_created',
           specVersion: SPEC_VERSION_CURRENT,
@@ -128,7 +128,7 @@ describe('start', () => {
       await start(validWorkflow, [], { specVersion: SPEC_VERSION_LEGACY });
 
       expect(mockEventsCreate).toHaveBeenCalledWith(
-        null,
+        expect.stringMatching(/^wrun_/), // Client-generated runId
         expect.objectContaining({
           eventType: 'run_created',
           specVersion: SPEC_VERSION_LEGACY,
@@ -147,7 +147,7 @@ describe('start', () => {
       await start(validWorkflow, [], { specVersion: 1 });
 
       expect(mockEventsCreate).toHaveBeenCalledWith(
-        null,
+        expect.stringMatching(/^wrun_/), // Client-generated runId
         expect.objectContaining({
           eventType: 'run_created',
           specVersion: 1,

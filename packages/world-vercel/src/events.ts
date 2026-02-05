@@ -129,7 +129,7 @@ export async function createWorkflowRunEvent(
     return { event: wireResult };
   }
 
-  // For run_created events, runId is null - use "null" string in the URL path
+  // For run_created events, id can be client-provided runId or null (server generates)
   const runIdPath = id === null ? 'null' : id;
 
   const wireResult = await makeRequest({

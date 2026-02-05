@@ -186,15 +186,16 @@ export interface Storage {
   events: {
     /**
      * Create a run_created event to start a new workflow run.
-     * The runId parameter must be null - the server generates and returns the runId.
+     * The runId can be provided by the client (required for E2E encryption) or
+     * null to have the server generate it.
      *
-     * @param runId - Must be null for run_created events
+     * @param runId - Client-provided runId, or null to have server generate it
      * @param data - The run_created event data
      * @param params - Optional parameters for event creation
      * @returns Promise resolving to the created event and run entity
      */
     create(
-      runId: null,
+      runId: string | null,
       data: RunCreatedEventRequest,
       params?: CreateEventParams
     ): Promise<EventResult>;

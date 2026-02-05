@@ -127,11 +127,10 @@ export async function start<TArgs extends unknown[], TResult>(
         v1Compat
       );
       const result = await world.events.create(
-        null,
+        runId, // Pass client-generated runId for E2E encryption
         {
           eventType: 'run_created',
           specVersion,
-          runId, // Pass client-generated runId to server
           eventData: {
             deploymentId: deploymentId,
             workflowName: workflowName,
