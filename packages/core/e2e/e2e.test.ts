@@ -1,4 +1,3 @@
-import { withResolvers } from '@workflow/utils';
 import fs from 'fs';
 import path from 'path';
 import { afterAll, assert, describe, expect, test } from 'vitest';
@@ -67,9 +66,14 @@ async function triggerWorkflow(
   url.searchParams.set('workflowFn', workflowFn);
 
   const ops: Promise<void>[] = [];
-  const { promise: runIdPromise, resolve: resolveRunId } =
-    withResolvers<string>();
-  const dehydratedArgs = dehydrateWorkflowArguments(args, ops, runIdPromise);
+  // Dehydrate args for transport - no encryption needed for test setup
+  // The server will re-serialize with the real runId when calling start()
+  const dehydratedArgs = await dehydrateWorkflowArguments(
+    args,
+    '', // No runId needed for unencrypted transport
+    {}, // No encryptor
+    ops
+  );
 
   const res = await fetch(url, {
     method: 'POST',
@@ -77,7 +81,7 @@ async function triggerWorkflow(
       ...getProtectionBypassHeaders(),
       'Content-Type': 'application/octet-stream',
     },
-    body: dehydratedArgs.buffer as BodyInit,
+    body: dehydratedArgs as Uint8Array,
   });
   if (!res.ok) {
     throw new Error(
@@ -87,7 +91,6 @@ async function triggerWorkflow(
     );
   }
   const run = await res.json();
-  resolveRunId(run.runId);
 
   // Collect runId for observability links (Vercel world only)
   if (process.env.WORKFLOW_VERCEL_ENV) {
