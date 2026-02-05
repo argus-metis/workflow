@@ -35,12 +35,17 @@ export async function POST(req: Request) {
   );
 
   try {
-    const workflowFileItems =
-      workflowManifest.workflows[
-        workflowFile as keyof typeof workflowManifest.workflows
-      ];
+    // Convert file path from "workflows/99_e2e.ts" to "./workflows/99_e2e"
+    const normalizedFile = `./${workflowFile.replace(/\.ts$/, '')}`;
+    // Build the workflow ID in the manifest format: "workflow//<file>//<fn>"
+    const workflowId = `workflow//${normalizedFile}//${workflowFn}`;
     const workflow =
-      workflowFileItems[workflowFn as keyof typeof workflowFileItems];
+      workflowManifest.workflows[
+        workflowId as keyof typeof workflowManifest.workflows
+      ];
+    if (!workflow) {
+      throw new Error(`Workflow not found: ${workflowId}`);
+    }
     const run = await start(workflow, args);
     console.log('Run:', run.runId);
     return Response.json(run);
