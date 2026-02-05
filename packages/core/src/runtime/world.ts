@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { World } from '@workflow/world';
 import { createLocalWorld } from '@workflow/world-local';
@@ -31,14 +32,19 @@ const dynamicImport = new Function('specifier', 'return import(specifier)') as (
 ) => Promise<any>;
 
 function resolveModulePath(specifier: string): string {
-  if (
-    specifier.startsWith('file://') ||
-    specifier.startsWith('/') ||
-    specifier.startsWith('./') ||
-    specifier.startsWith('../')
-  ) {
+  // Already a file:// URL
+  if (specifier.startsWith('file://')) {
     return specifier;
   }
+  // Absolute path - convert to file:// URL
+  if (specifier.startsWith('/')) {
+    return pathToFileURL(specifier).href;
+  }
+  // Relative path - resolve relative to cwd and convert to file:// URL
+  if (specifier.startsWith('./') || specifier.startsWith('../')) {
+    return pathToFileURL(resolve(process.cwd(), specifier)).href;
+  }
+  // Package specifier - use require.resolve to find the package
   try {
     const require = createRequire(
       pathToFileURL(process.cwd() + '/package.json').href
