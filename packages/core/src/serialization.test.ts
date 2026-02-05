@@ -2353,7 +2353,7 @@ describe('custom class serialization', () => {
     expect(hydrated.created.toISOString()).toBe('2025-01-01T00:00:00.000Z');
   });
 
-  it('should pass class as this context to WORKFLOW_SERIALIZE and WORKFLOW_DESERIALIZE', () => {
+  it('should pass class as this context to WORKFLOW_SERIALIZE and WORKFLOW_DESERIALIZE', async () => {
     // This test verifies that serialize.call(cls, value) and deserialize.call(cls, data)
     // properly pass the class as `this` context, which is required when the serializer/deserializer
     // needs to access static properties or methods on the class
@@ -2394,13 +2394,13 @@ describe('custom class serialization', () => {
 
     // Serialize an instance - this should increment serializedCount via `this`
     const counter = new Counter(42);
-    const serialized = dehydrateWorkflowArguments(counter, [], mockRunId);
+    const serialized = await dehydrateWorkflowArguments(counter, [], mockRunId);
 
     // Verify serialization used `this` correctly
     expect(Counter.serializedCount).toBe(1);
 
     // Deserialize - this should increment deserializedCount via `this`
-    const hydrated = hydrateWorkflowArguments(serialized, globalThis);
+    const hydrated = await hydrateWorkflowArguments(serialized, globalThis);
 
     // Verify deserialization used `this` correctly
     expect(Counter.deserializedCount).toBe(1);
@@ -2409,7 +2409,7 @@ describe('custom class serialization', () => {
 
     // Serialize another instance to verify counter increments
     const counter2 = new Counter(100);
-    dehydrateWorkflowArguments(counter2, [], mockRunId);
+    await dehydrateWorkflowArguments(counter2, [], mockRunId);
     expect(Counter.serializedCount).toBe(2);
   });
 });
