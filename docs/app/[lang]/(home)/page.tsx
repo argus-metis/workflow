@@ -5,9 +5,11 @@ import { Frameworks } from './components/frameworks';
 import { Hero } from './components/hero';
 import { Implementation } from './components/implementation';
 import { Intro } from './components/intro/intro';
+import { Logos } from './components/logos';
 import { Observability } from './components/observability';
 import { RunAnywhere } from './components/run-anywhere';
 import { Templates } from './components/templates';
+import { Testimonials } from './components/testimonials';
 import { UseCases } from './components/use-cases-server';
 
 const title = 'Make any TypeScript Function Durable';
@@ -29,6 +31,7 @@ const Home = () => (
   <div className="[&_h1]:tracking-tighter [&_h2]:tracking-tighter [&_h3]:tracking-tighter [&_h4]:tracking-tighter [&_h5]:tracking-tighter [&_h6]:tracking-tighter">
     <div className="mx-auto w-full max-w-[1080px]">
       <Hero title={title} description={description} />
+      <Logos />
       <div className="grid divide-y border-y sm:border-x">
         <Intro />
         <Implementation />
@@ -40,6 +43,7 @@ const Home = () => (
         <RunAnywhere />
         <UseCases />
         <Templates />
+        <Testimonials />
         <CTA />
       </div>
     </div>
