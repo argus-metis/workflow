@@ -26,7 +26,7 @@ import { version } from './version.js';
  * Example: 'https://workflow-server-git-branch-name.vercel.sh'
  */
 const WORKFLOW_SERVER_URL_OVERRIDE =
-  'https://workflow-server-git-peter-survive-redis-flush-new.vercel.sh';
+  'https://workflow-server-k65m34c1w.vercel.sh';
 
 export interface APIConfig {
   token?: string;
