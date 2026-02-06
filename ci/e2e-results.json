@@ -1,6 +1,6 @@
 {
-  "lastUpdated": "2026-02-06T20:31:28.024Z",
-  "commit": "661724c01e78691abad26fa99bd44f254a70f2dd",
+  "lastUpdated": "2026-02-06T20:43:41.299Z",
+  "commit": "01732dac93247f67adab3749ae1aac2ff273df08",
   "branch": "main",
   "type": "e2e",
   "worlds": {
@@ -42,10 +42,10 @@
     },
     "local": {
       "status": "passing",
-      "total": 1222,
-      "passed": 1154,
+      "total": 1269,
+      "passed": 1197,
       "failed": 0,
-      "skipped": 68,
+      "skipped": 72,
       "frameworks": {
         "astro": {
           "total": 94,
@@ -77,6 +77,11 @@
           "passed": 188,
           "failed": 0
         },
+        "nitro": {
+          "total": 94,
+          "passed": 86,
+          "failed": 0
+        },
         "nuxt": {
           "total": 94,
           "passed": 86,
@@ -90,11 +95,6 @@
         "vite": {
           "total": 94,
           "passed": 86,
-          "failed": 0
-        },
-        "nitro": {
-          "total": 47,
-          "passed": 43,
           "failed": 0
         }
       },
