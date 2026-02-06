@@ -6,14 +6,14 @@ import { type StructuredError, StructuredErrorSchema } from '@workflow/world';
 import { decode, encode } from 'cbor-x';
 import type { z } from 'zod';
 import {
-  trace,
+  ErrorType,
   getSpanKind,
   HttpRequestMethod,
   HttpResponseStatusCode,
-  UrlFull,
   ServerAddress,
   ServerPort,
-  ErrorType,
+  trace,
+  UrlFull,
   WorldParseFormat,
 } from './telemetry.js';
 import { version } from './version.js';
@@ -25,7 +25,8 @@ import { version } from './version.js';
  *
  * Example: 'https://workflow-server-git-branch-name.vercel.sh'
  */
-const WORKFLOW_SERVER_URL_OVERRIDE = '';
+const WORKFLOW_SERVER_URL_OVERRIDE =
+  'https://workflow-server-git-peter-survive-redis-flush-new.vercel.sh';
 
 export interface APIConfig {
   token?: string;
