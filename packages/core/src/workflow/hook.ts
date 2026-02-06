@@ -1,3 +1,4 @@
+import { ERROR_SLUGS, WorkflowRuntimeError } from '@workflow/errors';
 import { type PromiseWithResolvers, withResolvers } from '@workflow/utils';
 import type { HookConflictEvent, HookReceivedEvent } from '@workflow/world';
 import type { Hook, HookOptions } from '../create-hook.js';
@@ -6,7 +7,6 @@ import { WorkflowSuspension } from '../global.js';
 import { webhookLogger } from '../logger.js';
 import type { WorkflowOrchestratorContext } from '../private.js';
 import { hydrateStepReturnValue } from '../serialization.js';
-import { ERROR_SLUGS, WorkflowRuntimeError } from '@workflow/errors';
 
 export function createCreateHook(ctx: WorkflowOrchestratorContext) {
   return function createHookImpl<T = any>(options: HookOptions = {}): Hook<T> {
@@ -94,11 +94,23 @@ export function createCreateHook(ctx: WorkflowOrchestratorContext) {
           const next = promises.shift();
           if (next) {
             // Reconstruct the payload from the event data
-            const payload = hydrateStepReturnValue(
+            // Use .then() pattern since hydrateStepReturnValue is async
+            hydrateStepReturnValue(
               event.eventData.payload,
+              ctx.runId,
+              ctx.encryptor,
               ctx.globalThis
-            );
-            next.resolve(payload);
+            )
+              .then((payload) => {
+                next.resolve(payload as T);
+              })
+              .catch((error) => {
+                ctx.onWorkflowError(
+                  error instanceof Error
+                    ? error
+                    : new WorkflowRuntimeError(String(error))
+                );
+              });
           }
         } else {
           payloadsQueue.push(event);
@@ -138,11 +150,19 @@ export function createCreateHook(ctx: WorkflowOrchestratorContext) {
       if (payloadsQueue.length > 0) {
         const nextPayload = payloadsQueue.shift();
         if (nextPayload) {
-          const payload = hydrateStepReturnValue(
+          // Use .then() pattern since hydrateStepReturnValue is async
+          hydrateStepReturnValue(
             nextPayload.eventData.payload,
+            ctx.runId,
+            ctx.encryptor,
             ctx.globalThis
-          );
-          resolvers.resolve(payload);
+          )
+            .then((payload) => {
+              resolvers.resolve(payload as T);
+            })
+            .catch((error) => {
+              resolvers.reject(error);
+            });
           return resolvers.promise;
         }
       }

@@ -5,6 +5,7 @@
 
 import { inspect } from 'node:util';
 import { parseClassName } from '@workflow/utils/parse-name';
+import type { Encryptor } from '@workflow/world';
 import { unflatten } from 'devalue';
 import { runtimeLogger } from './logger.js';
 import {
@@ -254,20 +255,22 @@ const hydrateLegacyData = (data: any[]): unknown => {
   return unflatten(data, getObservabilityRevivers());
 };
 
-const hydrateStepIO = <
+const hydrateStepIO = async <
   T extends { stepId?: string; input?: any; output?: any; runId?: string },
 >(
-  step: T
-): T => {
+  step: T,
+  encryptor: Encryptor
+): Promise<T> => {
   let hydratedInput = step.input;
   let hydratedOutput = step.output;
 
   // Hydrate input - handle both binary (specVersion 2) and legacy (specVersion 1) formats
   if (isBinaryFormat(step.input) && step.input.byteLength > 0) {
-    hydratedInput = hydrateStepArguments(
+    hydratedInput = await hydrateStepArguments(
       step.input,
-      [],
       step.runId as string,
+      encryptor,
+      [],
       globalThis,
       streamPrintRevivers
     );
@@ -277,8 +280,10 @@ const hydrateStepIO = <
 
   // Hydrate output - handle both binary (specVersion 2) and legacy (specVersion 1) formats
   if (isBinaryFormat(step.output)) {
-    hydratedOutput = hydrateStepReturnValue(
+    hydratedOutput = await hydrateStepReturnValue(
       step.output,
+      step.runId as string,
+      encryptor,
       globalThis,
       streamPrintRevivers
     );
@@ -293,18 +298,21 @@ const hydrateStepIO = <
   };
 };
 
-const hydrateWorkflowIO = <
+const hydrateWorkflowIO = async <
   T extends { runId?: string; input?: any; output?: any },
 >(
-  workflow: T
-): T => {
+  workflow: T,
+  encryptor: Encryptor
+): Promise<T> => {
   let hydratedInput = workflow.input;
   let hydratedOutput = workflow.output;
 
   // Hydrate input - handle both binary (specVersion 2) and legacy (specVersion 1) formats
   if (isBinaryFormat(workflow.input) && workflow.input.byteLength > 0) {
-    hydratedInput = hydrateWorkflowArguments(
+    hydratedInput = await hydrateWorkflowArguments(
       workflow.input,
+      workflow.runId as string,
+      encryptor,
       globalThis,
       streamPrintRevivers
     );
@@ -314,10 +322,11 @@ const hydrateWorkflowIO = <
 
   // Hydrate output - handle both binary (specVersion 2) and legacy (specVersion 1) formats
   if (isBinaryFormat(workflow.output)) {
-    hydratedOutput = hydrateWorkflowReturnValue(
+    hydratedOutput = await hydrateWorkflowReturnValue(
       workflow.output,
-      [],
       workflow.runId as string,
+      encryptor,
+      [],
       globalThis,
       streamPrintRevivers
     );
@@ -332,11 +341,12 @@ const hydrateWorkflowIO = <
   };
 };
 
-const hydrateEventData = <
+const hydrateEventData = async <
   T extends { eventId?: string; eventData?: any; runId?: string },
 >(
-  event: T
-): T => {
+  event: T,
+  encryptor: Encryptor
+): Promise<T> => {
   if (!event.eventData) {
     return event;
   }
@@ -348,8 +358,10 @@ const hydrateEventData = <
     if ('result' in eventData && typeof eventData.result === 'object') {
       // Handle both binary (specVersion 2) and legacy (specVersion 1) formats
       if (isBinaryFormat(eventData.result)) {
-        eventData.result = hydrateStepReturnValue(
+        eventData.result = await hydrateStepReturnValue(
           eventData.result,
+          event.runId as string,
+          encryptor,
           globalThis,
           streamPrintRevivers
         );
@@ -369,18 +381,22 @@ const hydrateEventData = <
   };
 };
 
-const hydrateHookMetadata = <T extends { hookId?: string; metadata?: any }>(
-  hook: T
-): T => {
+const hydrateHookMetadata = async <
+  T extends { hookId?: string; metadata?: any },
+>(
+  hook: T,
+  encryptor: Encryptor
+): Promise<T> => {
   let hydratedMetadata = hook.metadata;
 
   if (hook.metadata && 'runId' in hook) {
     // Handle both binary (specVersion 2) and legacy (specVersion 1) formats
     if (isBinaryFormat(hook.metadata)) {
-      hydratedMetadata = hydrateStepArguments(
+      hydratedMetadata = await hydrateStepArguments(
         hook.metadata,
-        [],
         hook.runId as string,
+        encryptor,
+        [],
         globalThis,
         streamPrintRevivers
       );
@@ -395,7 +411,7 @@ const hydrateHookMetadata = <T extends { hookId?: string; metadata?: any }>(
   };
 };
 
-export const hydrateResourceIO = <
+export const hydrateResourceIO = async <
   T extends {
     stepId?: string;
     hookId?: string;
@@ -407,20 +423,21 @@ export const hydrateResourceIO = <
     executionContext?: any;
   },
 >(
-  resource: T
-): T => {
+  resource: T,
+  encryptor: Encryptor
+): Promise<T> => {
   if (!resource) {
     return resource;
   }
   let hydrated: T;
   if ('stepId' in resource) {
-    hydrated = hydrateStepIO(resource);
+    hydrated = await hydrateStepIO(resource, encryptor);
   } else if ('hookId' in resource) {
-    hydrated = hydrateHookMetadata(resource);
+    hydrated = await hydrateHookMetadata(resource, encryptor);
   } else if ('eventId' in resource) {
-    hydrated = hydrateEventData(resource);
+    hydrated = await hydrateEventData(resource, encryptor);
   } else {
-    hydrated = hydrateWorkflowIO(resource);
+    hydrated = await hydrateWorkflowIO(resource, encryptor);
   }
   if ('executionContext' in hydrated) {
     const { executionContext, ...rest } = hydrated;

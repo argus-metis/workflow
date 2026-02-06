@@ -78,24 +78,28 @@ export async function handleSuspension({
   );
 
   // Build hook_created events (World will atomically create hook entities)
-  const hookEvents: CreateEventRequest[] = hookItems.map((queueItem) => {
-    const hookMetadata: SerializedData | undefined =
-      typeof queueItem.metadata === 'undefined'
-        ? undefined
-        : (dehydrateStepArguments(
-            queueItem.metadata,
-            suspension.globalThis
-          ) as SerializedData);
-    return {
-      eventType: 'hook_created' as const,
-      specVersion: SPEC_VERSION_CURRENT,
-      correlationId: queueItem.correlationId,
-      eventData: {
-        token: queueItem.token,
-        metadata: hookMetadata,
-      },
-    };
-  });
+  const hookEvents: CreateEventRequest[] = await Promise.all(
+    hookItems.map(async (queueItem) => {
+      const hookMetadata: SerializedData | undefined =
+        typeof queueItem.metadata === 'undefined'
+          ? undefined
+          : ((await dehydrateStepArguments(
+              queueItem.metadata,
+              runId,
+              world,
+              suspension.globalThis
+            )) as SerializedData);
+      return {
+        eventType: 'hook_created' as const,
+        specVersion: SPEC_VERSION_CURRENT,
+        correlationId: queueItem.correlationId,
+        eventData: {
+          token: queueItem.token,
+          metadata: hookMetadata,
+        },
+      };
+    })
+  );
 
   // Process hooks first to prevent race conditions with webhook receivers
   // All hook creations run in parallel
@@ -153,12 +157,14 @@ export async function handleSuspension({
       (async () => {
         // Create step event if not already created
         if (stepsNeedingCreation.has(queueItem.correlationId)) {
-          const dehydratedInput = dehydrateStepArguments(
+          const dehydratedInput = await dehydrateStepArguments(
             {
               args: queueItem.args,
               closureVars: queueItem.closureVars,
               thisVal: queueItem.thisVal,
             },
+            runId,
+            world,
             suspension.globalThis
           );
           const stepEvent: CreateEventRequest = {

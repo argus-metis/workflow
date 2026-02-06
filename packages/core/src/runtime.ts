@@ -50,11 +50,11 @@ export {
 export {
   cancelRun,
   listStreams,
+  type ReadStreamOptions,
+  type RecreateRunOptions,
   readStream,
   recreateRunFromExisting,
   reenqueueRun,
-  type ReadStreamOptions,
-  type RecreateRunOptions,
   type StopSleepOptions,
   type StopSleepResult,
   wakeUpRun,
@@ -219,19 +219,11 @@ export function workflowEntrypoint(
                     events.push(result.event!);
                   }
 
-                  const result = await trace(
-                    'workflow.replay',
-                    {},
-                    async (replaySpan) => {
-                      replaySpan?.setAttributes({
-                        ...Attribute.WorkflowEventsCount(events.length),
-                      });
-                      return await runWorkflow(
-                        workflowCode,
-                        workflowRun,
-                        events
-                      );
-                    }
+                  const result = await runWorkflow(
+                    workflowCode,
+                    workflowRun,
+                    events,
+                    world
                   );
 
                   // Complete the workflow run via event (event-sourced architecture)

@@ -34,7 +34,8 @@ import { createSleep } from './workflow/sleep.js';
 export async function runWorkflow(
   workflowCode: string,
   workflowRun: WorkflowRun,
-  events: Event[]
+  events: Event[],
+  encryptor: import('@workflow/world').Encryptor
 ): Promise<Uint8Array | unknown> {
   return trace(`workflow.run ${workflowRun.workflowName}`, async (span) => {
     span?.setAttributes({
@@ -78,6 +79,8 @@ export async function runWorkflow(
       generateUlid: () => ulid(+startedAt),
       generateNanoid,
       invocationsQueue: new Map(),
+      runId: workflowRun.runId,
+      encryptor,
     };
 
     // Subscribe to the events log to update the timestamp in the vm context
@@ -624,7 +627,12 @@ export async function runWorkflow(
       );
     }
 
-    const args = hydrateWorkflowArguments(workflowRun.input, vmGlobalThis);
+    const args = await hydrateWorkflowArguments(
+      workflowRun.input,
+      workflowRun.runId,
+      encryptor,
+      vmGlobalThis
+    );
 
     span?.setAttributes({
       ...Attribute.WorkflowArgumentsCount(args.length),
@@ -636,7 +644,12 @@ export async function runWorkflow(
       workflowDiscontinuation.promise,
     ]);
 
-    const dehydrated = dehydrateWorkflowReturnValue(result, vmGlobalThis);
+    const dehydrated = await dehydrateWorkflowReturnValue(
+      result,
+      workflowRun.runId,
+      encryptor,
+      vmGlobalThis
+    );
 
     span?.setAttributes({
       ...Attribute.WorkflowResultType(typeof result),

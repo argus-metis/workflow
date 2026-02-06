@@ -534,7 +534,9 @@ export const listRuns = async (world: World, opts: InspectCLIOptions = {}) => {
         },
         resolveData,
       });
-      const runsWithHydratedIO = runs.data.map(hydrateResourceIO);
+      const runsWithHydratedIO = await Promise.all(
+        runs.data.map(async (run) => hydrateResourceIO(run, world))
+      );
       showJson({ ...runs, data: runsWithHydratedIO });
       return;
     } catch (error) {
@@ -572,7 +574,9 @@ export const listRuns = async (world: World, opts: InspectCLIOptions = {}) => {
       }
     },
     displayPage: async (runs) => {
-      const runsWithHydratedIO = runs.map(hydrateResourceIO);
+      const runsWithHydratedIO = await Promise.all(
+        runs.map(async (run) => hydrateResourceIO(run, world))
+      );
       logger.log(showTable(runsWithHydratedIO, props, opts));
     },
   });
@@ -588,7 +592,9 @@ export const getRecentRun = async (
       pagination: { limit: 1, sortOrder: opts.sort || 'desc' },
       resolveData: 'none', // Don't need data for just getting the ID
     });
-    runs.data = runs.data.map(hydrateResourceIO);
+    runs.data = await Promise.all(
+      runs.data.map(async (run) => hydrateResourceIO(run, world))
+    );
     return runs.data[0];
   } catch (error) {
     if (handleApiError(error, opts.backend)) {
@@ -608,7 +614,7 @@ export const showRun = async (
   }
   try {
     const run = await world.runs.get(runId, { resolveData: 'all' });
-    const runWithHydratedIO = hydrateResourceIO(run);
+    const runWithHydratedIO = await hydrateResourceIO(run, world);
     if (opts.json) {
       showJson(runWithHydratedIO);
       return;
@@ -711,7 +717,9 @@ export const listSteps = async (
       }
     },
     displayPage: async (steps) => {
-      const stepsWithHydratedIO = steps.map(hydrateResourceIO);
+      const stepsWithHydratedIO = await Promise.all(
+        steps.map(async (step) => hydrateResourceIO(step, world))
+      );
       logger.log(showTable(stepsWithHydratedIO, props, opts));
       showInspectInfoBox('step');
     },
@@ -735,7 +743,7 @@ export const showStep = async (
     const step = await world.steps.get(opts.runId, stepId, {
       resolveData: 'all',
     });
-    const stepWithHydratedIO = hydrateResourceIO(step);
+    const stepWithHydratedIO = await hydrateResourceIO(step, world);
     if (opts.json) {
       showJson(stepWithHydratedIO);
       return;
@@ -950,7 +958,9 @@ export const listHooks = async (world: World, opts: InspectCLIOptions = {}) => {
         },
         resolveData,
       });
-      const hydratedHooks = hooks.data.map(hydrateResourceIO);
+      const hydratedHooks = await Promise.all(
+        hooks.data.map(async (hook) => hydrateResourceIO(hook, world))
+      );
       showJson({ ...hooks, data: hydratedHooks });
       return;
     } catch (error) {
@@ -994,7 +1004,9 @@ export const listHooks = async (world: World, opts: InspectCLIOptions = {}) => {
       }
     },
     displayPage: async (hooks) => {
-      const hydratedHooks = hooks.map(hydrateResourceIO);
+      const hydratedHooks = await Promise.all(
+        hooks.map(async (hook) => hydrateResourceIO(hook, world))
+      );
       logger.log(showTable(hydratedHooks, HOOK_LISTED_PROPS, opts));
       showInspectInfoBox('hook');
     },
@@ -1013,7 +1025,7 @@ export const showHook = async (
     const hook = await world.hooks.get(hookId, {
       resolveData: 'all',
     });
-    const hydratedHook = hydrateResourceIO(hook);
+    const hydratedHook = await hydrateResourceIO(hook, world);
     if (opts.json) {
       showJson(hydratedHook);
       return;

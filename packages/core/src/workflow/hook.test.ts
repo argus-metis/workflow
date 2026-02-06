@@ -27,6 +27,8 @@ function setupWorkflowContext(events: Event[]): WorkflowOrchestratorContext {
       new Uint8Array(size).map(() => 256 * context.globalThis.Math.random())
     ),
     onWorkflowError: vi.fn(),
+    runId: 'wrun_test',
+    encryptor: {},
   };
 }
 
@@ -40,7 +42,12 @@ describe('createCreateHook', () => {
         eventType: 'hook_received',
         correlationId: 'hook_01K11TFZ62YS0YYFDQ3E8B9YCV',
         eventData: {
-          payload: dehydrateStepReturnValue({ message: 'hello' }, ops),
+          payload: await dehydrateStepReturnValue(
+            { message: 'hello' },
+            'wrun_123',
+            {},
+            ops
+          ),
         },
         createdAt: new Date(),
       },
@@ -125,7 +132,12 @@ describe('createCreateHook', () => {
         eventType: 'hook_received',
         correlationId: 'hook_01K11TFZ62YS0YYFDQ3E8B9YCV',
         eventData: {
-          payload: dehydrateStepReturnValue({ data: 'test' }, ops),
+          payload: await dehydrateStepReturnValue(
+            { data: 'test' },
+            'wrun_123',
+            {},
+            ops
+          ),
         },
         createdAt: new Date(),
       },
@@ -189,7 +201,12 @@ describe('createCreateHook', () => {
         eventType: 'hook_received',
         correlationId: 'hook_01K11TFZ62YS0YYFDQ3E8B9YCV',
         eventData: {
-          payload: dehydrateStepReturnValue({ message: 'first' }, ops),
+          payload: await dehydrateStepReturnValue(
+            { message: 'first' },
+            'wrun_123',
+            {},
+            ops
+          ),
         },
         createdAt: new Date(),
       },
@@ -199,7 +216,12 @@ describe('createCreateHook', () => {
         eventType: 'hook_received',
         correlationId: 'hook_01K11TFZ62YS0YYFDQ3E8B9YCV',
         eventData: {
-          payload: dehydrateStepReturnValue({ message: 'second' }, ops),
+          payload: await dehydrateStepReturnValue(
+            { message: 'second' },
+            'wrun_123',
+            {},
+            ops
+          ),
         },
         createdAt: new Date(),
       },

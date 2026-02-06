@@ -27,6 +27,8 @@ function setupWorkflowContext(events: Event[]): WorkflowOrchestratorContext {
       new Uint8Array(size).map(() => 256 * context.globalThis.Math.random())
     ),
     onWorkflowError: vi.fn(),
+    runId: 'wrun_test',
+    encryptor: {},
   };
 }
 
@@ -39,7 +41,7 @@ describe('createUseStep', () => {
         eventType: 'step_completed',
         correlationId: 'step_01K11TFZ62YS0YYFDQ3E8B9YCV',
         eventData: {
-          result: dehydrateStepReturnValue(3),
+          result: await dehydrateStepReturnValue(3, 'wrun_123', {}),
         },
         createdAt: new Date(),
       },
@@ -190,7 +192,7 @@ describe('createUseStep', () => {
         eventType: 'step_completed',
         correlationId: 'step_01K11TFZ62YS0YYFDQ3E8B9YCV',
         eventData: {
-          result: dehydrateStepReturnValue(undefined),
+          result: await dehydrateStepReturnValue(undefined, 'wrun_123', {}),
         },
         createdAt: new Date(),
       },
@@ -409,7 +411,7 @@ describe('createUseStep', () => {
         eventType: 'step_completed',
         correlationId: 'step_01K11TFZ62YS0YYFDQ3E8B9YCV',
         eventData: {
-          result: dehydrateStepReturnValue(42),
+          result: await dehydrateStepReturnValue(42, 'wrun_123', {}),
         },
         createdAt: new Date(),
       },

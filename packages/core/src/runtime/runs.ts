@@ -1,10 +1,10 @@
-import { hydrateWorkflowArguments } from '../serialization.js';
 import {
   type Event,
   isLegacySpecVersion,
   SPEC_VERSION_LEGACY,
   type World,
 } from '@workflow/world';
+import { hydrateWorkflowArguments } from '../serialization.js';
 import { getWorkflowQueueName } from './helpers.js';
 import { start } from './start.js';
 
@@ -48,8 +48,10 @@ export async function recreateRunFromExisting(
 ): Promise<string> {
   try {
     const run = await world.runs.get(runId, { resolveData: 'all' });
+    // TODO: Use world.getEncryptorForRun(runId) here once encryption is wired in,
+    // since the run may belong to a different deployment
     const workflowArgs = normalizeWorkflowArgs(
-      hydrateWorkflowArguments(run.input, globalThis)
+      await hydrateWorkflowArguments(run.input, runId, {}, globalThis)
     );
     const specVersion =
       options.specVersion ?? run.specVersion ?? SPEC_VERSION_LEGACY;
