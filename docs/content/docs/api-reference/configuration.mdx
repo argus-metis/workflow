@@ -1,0 +1,210 @@
+---
+title: Configuration
+description: Environment variables, CLI flags, and configuration options for Workflow DevKit.
+---
+
+Complete reference for all environment variables, CLI flags, and configuration options available in Workflow DevKit.
+
+## Environment Variables
+
+### Runtime Configuration
+
+These environment variables configure the workflow runtime and backend selection.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `WORKFLOW_TARGET_WORLD` | Specifies the runtime backend (`local`, `vercel`, or a custom package name) | Auto-detected based on environment |
+| `WORKFLOW_LOCAL_DATA_DIR` | Directory for local workflow data storage | `.workflow-data` |
+| `WORKFLOW_LOCAL_BASE_URL` | Base URL for local workflow queue | Derived from `PORT` or auto-detected |
+| `WORKFLOW_PUBLIC_MANIFEST` | Set to `"1"` to make the manifest endpoint public (no auth required) | Not set |
+
+### Vercel Backend
+
+These environment variables configure the Vercel workflow backend.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `WORKFLOW_VERCEL_AUTH_TOKEN` | Authentication token for Vercel backend | — |
+| `WORKFLOW_VERCEL_ENV` | Vercel environment (`production` or `preview`) | `production` |
+| `WORKFLOW_VERCEL_PROJECT` | Vercel project ID or name | — |
+| `WORKFLOW_VERCEL_TEAM` | Vercel team ID or slug | — |
+
+### Local Backend
+
+These environment variables configure the local development backend.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `WORKFLOW_LOCAL_QUEUE_CONCURRENCY` | Concurrency limit for local queue workers | `1000` |
+| `WORKFLOW_LOCAL_QUEUE_MAX_VISIBILITY` | Max visibility timeout for local queue (milliseconds) | `0` (Infinity) |
+
+### PostgreSQL Backend
+
+These environment variables configure the PostgreSQL workflow backend.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `WORKFLOW_POSTGRES_URL` | PostgreSQL connection string | `postgres://world:world@localhost:5432/world` |
+| `WORKFLOW_POSTGRES_JOB_PREFIX` | Optional prefix for PostgreSQL queue job names | — |
+| `WORKFLOW_POSTGRES_WORKER_CONCURRENCY` | Worker concurrency for PostgreSQL backend | `10` |
+
+### Observability & CLI
+
+These environment variables configure the CLI and observability tools.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `WORKFLOW_OBSERVABILITY_CWD` | Working directory for observability/CLI | `process.cwd()` |
+| `WORKFLOW_MANIFEST_PATH` | Path to workflow manifest JSON | Auto-detected |
+| `WORKFLOW_EMBEDDED_DATA_DIR` | Directory for embedded workflow data | — |
+| `WORKFLOW_LOCAL_UI` | Use local web UI instead of Vercel dashboard | `false` |
+| `WORKFLOW_WEB_PORT` | Port for web UI server | `3456` |
+| `WORKFLOW_DISABLE_BROWSER_OPEN` | Disable automatic browser opening | `false` |
+
+### Development & Debugging
+
+These environment variables are useful during development and debugging.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `WORKFLOW_EMIT_SOURCEMAPS_FOR_DEBUGGING` | Enable source maps for debugging (set to `"1"`) | Not set |
+| `DEBUG` | Enable debug output (also set by `--verbose` flag) | Not set |
+
+## CLI Flags
+
+The Workflow DevKit CLI provides various commands with configurable flags.
+
+### Global Flags
+
+These flags are available across most CLI commands.
+
+| Flag | Short | Description | Default |
+|------|-------|-------------|---------|
+| `--verbose` | `-v` | Enable verbose output | `false` |
+| `--json` | `-j` | Output JSON instead of human-readable tables | `false` |
+| `--web` | `-w` | Open the web UI instead of displaying in terminal | `false` |
+| `--noBrowser` | — | Disable automatic browser opening when launching web UI | `false` |
+| `--webPort` | — | Port to use when launching the web UI | `3456` |
+| `--localUi` | — | Use local web UI instead of Vercel dashboard | `false` |
+| `--interactive` | `-i` | Enable interactive pagination with keyboard controls | `false` |
+
+### Backend Flags
+
+These flags configure which backend to connect to.
+
+| Flag | Short | Description | Default |
+|------|-------|-------------|---------|
+| `--backend` | `-b` | Backend to inspect (`local`, `vercel`, or custom) | `local` |
+| `--authToken` | `-a` | Authentication token for backend | — |
+| `--project` | — | Vercel project ID/name | — |
+| `--team` | — | Vercel team ID/slug | — |
+| `--env` | `-e` | Vercel environment (`production` or `preview`) | `production` |
+
+### Filtering & Pagination Flags
+
+These flags filter and paginate results.
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--cursor` | Pagination cursor for list commands | — |
+| `--sort` | Sort order (`asc` or `desc`) | `desc` |
+| `--limit` | Number of items to return per page | `20` |
+
+### Command-Specific Flags
+
+#### `inspect` Command
+
+```bash
+npx workflow inspect [runs|steps|hooks|events] [options]
+```
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--runId` | `-r` | Filter by run ID |
+| `--stepId` | `-s` | Filter by step ID |
+| `--hookId` | — | Filter by hook ID |
+| `--workflowName` | `-n` | Filter by workflow name |
+| `--withData` | `-d` | Include full input/output data in list views |
+
+#### `start` Command
+
+```bash
+npx workflow start <workflowName> [args]
+```
+
+Starts a new workflow run with optional JSON arguments.
+
+#### `cancel` Command
+
+```bash
+npx workflow cancel <runId>
+```
+
+Cancels an active workflow run.
+
+#### `dev` Command
+
+```bash
+npx workflow dev [options]
+```
+
+| Flag | Short | Description | Default |
+|------|-------|-------------|---------|
+| `--port` | `-p` | Port to run dev server on | `3000` |
+| `--target` | `-t` | Build target (`standalone` or `vercel-build-output-api`) | `standalone` |
+
+#### `build` Command
+
+```bash
+npx workflow build [options]
+```
+
+| Flag | Short | Description | Default |
+|------|-------|-------------|---------|
+| `--target` | `-t` | Build target (`standalone` or `vercel-build-output-api`) | `standalone` |
+| `--workflow-manifest` | `-m` | Output location for workflow manifest | — |
+
+#### `health` Command
+
+```bash
+npx workflow health [options]
+```
+
+| Flag | Short | Description | Default |
+|------|-------|-------------|---------|
+| `--endpoint` | `-e` | Which endpoint to check (`workflow`, `step`, or `both`) | `both` |
+| `--timeout` | `-t` | Timeout in milliseconds | `30000` |
+| `--port` | `-p` | Local server port (for local backend) | — |
+
+## Directive Strings
+
+Workflow DevKit uses special directive strings to mark functions for compilation.
+
+| Directive | Purpose | Context |
+|-----------|---------|---------|
+| `"use workflow"` | Marks an async function as a workflow orchestrator | First line inside function body |
+| `"use step"` | Marks a function as a step with full Node.js runtime access | First line inside function body |
+
+```typescript
+async function myWorkflow(input: string) {
+  "use workflow"
+  // Workflow code runs in sandboxed environment
+  const result = await myStep(input)
+  return result
+}
+
+async function myStep(data: string) {
+  "use step"
+  // Step code runs with full Node.js access
+  return processData(data)
+}
+```
+
+## Auto-Detected Configuration
+
+Workflow DevKit automatically detects configuration from the environment:
+
+- **Backend selection**: Automatically selects `vercel` when `VERCEL_DEPLOYMENT_ID` is present, otherwise defaults to `local`
+- **Data directory**: Discovers `.workflow-data` or `src/.workflow-data` in the project
+- **Manifest path**: Locates `.well-known/workflow/v1/manifest.json` in the project
+- **Vercel project**: Reads team and project IDs from `.vercel/` folder when available
