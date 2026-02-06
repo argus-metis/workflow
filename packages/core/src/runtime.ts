@@ -1,4 +1,4 @@
-import { WorkflowRuntimeError } from '@workflow/errors';
+import { WorkflowAPIError, WorkflowRuntimeError } from '@workflow/errors';
 import { parseWorkflowName } from '@workflow/utils/parse-name';
 import {
   type Event,
@@ -11,8 +11,10 @@ import { runtimeLogger } from './logger.js';
 import {
   getAllWorkflowRunEvents,
   getQueueOverhead,
+  getWorkflowQueueName,
   handleHealthCheckMessage,
   parseHealthCheckPayload,
+  queueMessage,
   withHealthCheck,
   withThrottleRetry,
 } from './runtime/helpers.js';
@@ -22,6 +24,7 @@ import { remapErrorStack } from './source-map.js';
 import * as Attribute from './telemetry/semantic-conventions.js';
 import {
   linkToCurrentContext,
+  serializeTraceCarrier,
   trace,
   withTraceContext,
   withWorkflowBaggage,
@@ -97,6 +100,7 @@ export function workflowEntrypoint(
         runId,
         traceCarrier: traceContext,
         requestedAt,
+        serverErrorRetryCount,
       } = WorkflowInvokePayloadSchema.parse(message_);
       // Extract the workflow name from the topic name
       const workflowName = metadata.queueName.slice('__wkf_workflow_'.length);
@@ -277,6 +281,40 @@ export function workflowEntrypoint(
                         return { timeoutSeconds: result.timeoutSeconds };
                       }
                     } else {
+                      // Retry server errors (5xx) with exponential backoff before failing the run
+                      if (
+                        WorkflowAPIError.is(err) &&
+                        err.status !== undefined &&
+                        err.status >= 500
+                      ) {
+                        const retryCount = serverErrorRetryCount ?? 0;
+                        const delays = [5, 30, 7200]; // 5s, 30s, 120min
+                        if (retryCount < delays.length) {
+                          runtimeLogger.warn(
+                            'Server error (5xx), re-enqueueing workflow with backoff',
+                            {
+                              workflowRunId: runId,
+                              retryCount,
+                              delaySeconds: delays[retryCount],
+                              error: err.message,
+                            }
+                          );
+                          await queueMessage(
+                            world,
+                            getWorkflowQueueName(workflowName),
+                            {
+                              runId,
+                              serverErrorRetryCount: retryCount + 1,
+                              traceCarrier: await serializeTraceCarrier(),
+                              requestedAt: new Date(),
+                            },
+                            { delaySeconds: delays[retryCount] }
+                          );
+                          return; // Don't fail the run, retry later
+                        }
+                        // Fall through to run_failed after exhausting retries
+                      }
+
                       // NOTE: this error could be an error thrown in user code, or could also be a WorkflowRuntimeError
                       // (for instance when the event log is corrupted, this is thrown by the event consumer). We could
                       // specially handle these if needed.
