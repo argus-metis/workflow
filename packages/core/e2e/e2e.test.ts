@@ -138,9 +138,19 @@ async function getWorkflowReturnValue(runId: string) {
 describe('e2e', () => {
   // Wait for the deployment to be healthy before running tests
   beforeAll(async () => {
+    const manifestUrl = new URL(
+      '/.well-known/workflow/v1/manifest.json',
+      deploymentUrl
+    );
     for (let i = 1; i <= 60; i++) {
       try {
-        const res = await fetch(deploymentUrl);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5_000);
+        const res = await fetch(manifestUrl, {
+          headers: getProtectionBypassHeaders(),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
         if (res.ok) {
           console.log(`Server healthy after ${i}s`);
           return;
