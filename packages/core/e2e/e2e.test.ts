@@ -1,7 +1,7 @@
 import { withResolvers } from '@workflow/utils';
 import fs from 'fs';
 import path from 'path';
-import { afterAll, assert, describe, expect, test } from 'vitest';
+import { afterAll, assert, beforeAll, describe, expect, test } from 'vitest';
 import { dehydrateWorkflowArguments } from '../src/serialization';
 import {
   cliHealthJson,
@@ -136,6 +136,25 @@ async function getWorkflowReturnValue(runId: string) {
 // NOTE: Temporarily disabling concurrent tests to avoid flakiness.
 // TODO: Re-enable concurrent tests after conf when we have more time to investigate.
 describe('e2e', () => {
+  // Wait for the deployment to be healthy before running tests
+  beforeAll(async () => {
+    for (let i = 1; i <= 60; i++) {
+      try {
+        const res = await fetch(deploymentUrl);
+        if (res.ok) {
+          console.log(`Server healthy after ${i}s`);
+          return;
+        }
+      } catch {
+        // Server not ready yet
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+    }
+    throw new Error(
+      `Server at ${deploymentUrl} did not become healthy within 60s`
+    );
+  }, 60_000);
+
   // Write E2E metadata file with runIds for observability links
   afterAll(() => {
     writeE2EMetadata();

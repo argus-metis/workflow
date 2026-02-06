@@ -78,8 +78,8 @@ export async function promiseAnyWorkflow() {
   'use workflow';
   const winner = await Promise.any([
     stepThatFails(),
-    specificDelay(1000, 'b'), // "b" should always win
-    specificDelay(3000, 'c'),
+    specificDelay(100, 'b'), // "b" should always win
+    specificDelay(10000, 'c'),
   ]);
   return winner;
 }
@@ -96,7 +96,7 @@ async function genReadableStream() {
       for (let i = 0; i < 10; i++) {
         console.log('enqueueing', i);
         controller.enqueue(encoder.encode(`${i}\n`));
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 500));
       }
       console.log('closing controller');
       controller.close();
