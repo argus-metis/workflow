@@ -46,8 +46,10 @@ export function createDevTests(config?: DevTestConfig) {
 
     const prewarm = async () => {
       // pre-warm for dev watching
-      await fetch(new URL('/', process.env.DEPLOYMENT_URL));
-      await fetch(new URL('/api/chat', process.env.DEPLOYMENT_URL));
+      await fetch(new URL('/', process.env.DEPLOYMENT_URL)).catch(() => {});
+      await fetch(new URL('/api/chat', process.env.DEPLOYMENT_URL)).catch(
+        () => {}
+      );
     };
 
     beforeAll(async () => {
