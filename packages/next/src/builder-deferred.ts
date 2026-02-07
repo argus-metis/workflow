@@ -64,16 +64,40 @@ export async function getNextBuilderDeferred() {
           ...implicitStepFiles,
         ])
       ).sort();
-      const buildSignature =
-        await this.createDeferredBuildSignature(inputFiles);
+      const pendingBuild = this.deferredBuildQueue.then(() =>
+        this.buildDeferredEntriesUntilStable(inputFiles, implicitStepFiles)
+      );
 
-      const pendingBuild = this.deferredBuildQueue.then(async () => {
+      // Keep the queue chain alive even when the current build fails so future
+      // callbacks can enqueue another attempt without triggering unhandled
+      // rejection warnings.
+      this.deferredBuildQueue = pendingBuild.catch(() => {
+        // Error is surfaced through `pendingBuild` below.
+      });
+
+      await pendingBuild;
+    }
+
+    private async buildDeferredEntriesUntilStable(
+      inputFiles: string[],
+      implicitStepFiles: string[]
+    ): Promise<void> {
+      // A successful build can discover additional transitive dependency files
+      // (via source maps), which changes the signature and may require one more
+      // build pass to include newly discovered serde files.
+      const maxBuildPasses = 3;
+
+      for (let buildPass = 0; buildPass < maxBuildPasses; buildPass++) {
+        const buildSignature =
+          await this.createDeferredBuildSignature(inputFiles);
         if (buildSignature === this.lastDeferredBuildSignature) {
           return;
         }
 
+        let didBuildSucceed = false;
         try {
           await this.buildDiscoveredFiles(inputFiles, implicitStepFiles);
+          didBuildSucceed = true;
         } catch (error) {
           console.warn(
             '[workflow] Deferred entries build failed. Will retry only after inputs change.',
@@ -84,16 +108,21 @@ export async function getNextBuilderDeferred() {
           // same broken input graph.
           this.lastDeferredBuildSignature = buildSignature;
         }
-      });
 
-      // Keep the queue chain alive even when the current build fails so future
-      // callbacks can enqueue another attempt without triggering unhandled
-      // rejection warnings.
-      this.deferredBuildQueue = pendingBuild.catch(() => {
-        // Error is surfaced through `pendingBuild` below.
-      });
+        if (!didBuildSucceed) {
+          return;
+        }
 
-      await pendingBuild;
+        const postBuildSignature =
+          await this.createDeferredBuildSignature(inputFiles);
+        if (postBuildSignature === buildSignature) {
+          return;
+        }
+      }
+
+      console.warn(
+        '[workflow] Deferred entries build signature did not stabilize after 3 passes.'
+      );
     }
 
     private async resolveImplicitStepFiles(): Promise<string[]> {

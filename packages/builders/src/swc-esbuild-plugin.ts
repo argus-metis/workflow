@@ -1,5 +1,5 @@
-import { readFile } from 'node:fs/promises';
-import { relative } from 'node:path';
+import { access, readFile, realpath } from 'node:fs/promises';
+import { basename, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import enhancedResolveOrig from 'enhanced-resolve';
 import type { Plugin } from 'esbuild';
@@ -54,6 +54,42 @@ const NODE_ESM_RESOLVE_OPTIONS = {
   dependencyType: 'esm',
   conditionNames: ['node', 'import'],
 };
+
+async function resolveWorkflowAliasRelativePath(
+  absoluteFilePath: string,
+  workingDir: string
+): Promise<string | undefined> {
+  const fileName = basename(absoluteFilePath);
+  const aliasDirs = ['workflows', 'src/workflows'];
+  const resolvedFilePath = await realpath(absoluteFilePath).catch(
+    () => undefined
+  );
+  if (!resolvedFilePath) {
+    return undefined;
+  }
+
+  const aliases = await Promise.all(
+    aliasDirs.map(async (aliasDir) => {
+      const candidatePath = resolve(workingDir, aliasDir, fileName);
+      try {
+        await access(candidatePath);
+      } catch {
+        return undefined;
+      }
+      const resolvedCandidatePath = await realpath(candidatePath).catch(
+        () => undefined
+      );
+      if (!resolvedCandidatePath) {
+        return undefined;
+      }
+      return resolvedCandidatePath === resolvedFilePath
+        ? `${aliasDir}/${fileName}`
+        : undefined;
+    })
+  );
+
+  return aliases.find((aliasPath): aliasPath is string => Boolean(aliasPath));
+}
 
 export function createSwcPlugin(options: SwcPluginOptions): Plugin {
   return {
@@ -187,10 +223,16 @@ export function createSwcPlugin(options: SwcPluginOptions): Plugin {
             // Handle files discovered outside the working directory
             // These come back as ../path/to/file, but we want just path/to/file
             if (relativeFilepath.startsWith('../')) {
-              relativeFilepath = relativeFilepath
-                .split('/')
-                .filter((part) => part !== '..')
-                .join('/');
+              const aliasedRelativePath =
+                await resolveWorkflowAliasRelativePath(args.path, workingDir);
+              if (aliasedRelativePath) {
+                relativeFilepath = aliasedRelativePath;
+              } else {
+                relativeFilepath = relativeFilepath
+                  .split('/')
+                  .filter((part) => part !== '..')
+                  .join('/');
+              }
             }
           }
 

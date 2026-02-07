@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { pluralize } from '@workflow/utils';
@@ -373,6 +373,27 @@ export abstract class BaseBuilder {
     export { stepEntrypoint as POST } from 'workflow/runtime';`;
 
     // Bundle with esbuild and our custom SWC plugin
+    const entriesToBundle = externalizeNonSteps
+      ? [...stepFiles, ...(resolvedBuiltInSteps ? [resolvedBuiltInSteps] : [])]
+      : undefined;
+    const normalizedEntriesToBundle = entriesToBundle
+      ? Array.from(
+          new Set(
+            (
+              await Promise.all(
+                entriesToBundle.map(async (entryToBundle) => {
+                  const resolvedEntry = await realpath(entryToBundle).catch(
+                    () => undefined
+                  );
+                  return resolvedEntry
+                    ? [entryToBundle, resolvedEntry]
+                    : [entryToBundle];
+                })
+              )
+            ).flat()
+          )
+        )
+      : undefined;
     const esbuildCtx = await esbuild.context({
       banner: {
         js: '// biome-ignore-all lint: generated file\n/* eslint-disable */\n',
@@ -419,12 +440,7 @@ export abstract class BaseBuilder {
         createPseudoPackagePlugin(),
         createSwcPlugin({
           mode: 'step',
-          entriesToBundle: externalizeNonSteps
-            ? [
-                ...stepFiles,
-                ...(resolvedBuiltInSteps ? [resolvedBuiltInSteps] : []),
-              ]
-            : undefined,
+          entriesToBundle: normalizedEntriesToBundle,
           outdir: outfile ? dirname(outfile) : undefined,
           workflowManifest,
         }),

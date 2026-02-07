@@ -1,5 +1,6 @@
+import { access, realpath } from 'node:fs/promises';
 import { connect, type Socket } from 'node:net';
-import { relative } from 'node:path';
+import { basename, relative, resolve } from 'node:path';
 import { transform } from '@swc/core';
 import { type SocketMessage, serializeMessage } from './socket-server.js';
 
@@ -14,6 +15,42 @@ let cachedBuildersModule: typeof import('@workflow/builders') | null = null;
 
 // Cache socket connection to avoid reconnecting on every file.
 let socketClientPromise: Promise<Socket | null> | null = null;
+
+async function resolveWorkflowAliasRelativePath(
+  absoluteFilePath: string,
+  workingDir: string
+): Promise<string | undefined> {
+  const fileName = basename(absoluteFilePath);
+  const aliasDirs = ['workflows', 'src/workflows'];
+  const resolvedFilePath = await realpath(absoluteFilePath).catch(
+    () => undefined
+  );
+  if (!resolvedFilePath) {
+    return undefined;
+  }
+
+  const aliases = await Promise.all(
+    aliasDirs.map(async (aliasDir) => {
+      const candidatePath = resolve(workingDir, aliasDir, fileName);
+      try {
+        await access(candidatePath);
+      } catch {
+        return undefined;
+      }
+      const resolvedCandidatePath = await realpath(candidatePath).catch(
+        () => undefined
+      );
+      if (!resolvedCandidatePath) {
+        return undefined;
+      }
+      return resolvedCandidatePath === resolvedFilePath
+        ? `${aliasDir}/${fileName}`
+        : undefined;
+    })
+  );
+
+  return aliases.find((aliasPath): aliasPath is string => Boolean(aliasPath));
+}
 
 function shouldUseSocketDiscovery(): boolean {
   return Boolean(
@@ -236,10 +273,18 @@ export default async function workflowLoader(
     relativeFilename = relative(workingDir, filename).replace(/\\/g, '/');
 
     if (relativeFilename.startsWith('../')) {
-      relativeFilename = relativeFilename
-        .split('/')
-        .filter((part) => part !== '..')
-        .join('/');
+      const aliasedRelativePath = await resolveWorkflowAliasRelativePath(
+        filename,
+        workingDir
+      );
+      if (aliasedRelativePath) {
+        relativeFilename = aliasedRelativePath;
+      } else {
+        relativeFilename = relativeFilename
+          .split('/')
+          .filter((part) => part !== '..')
+          .join('/');
+      }
     }
   }
 
