@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeAll, describe, expect, test } from 'vitest';
 import { getWorkbenchAppPath } from './utils';
 
 export interface DevTestConfig {
@@ -44,6 +44,16 @@ export function createDevTests(config?: DevTestConfig) {
     const workflowsDir = finalConfig.workflowsDir ?? 'workflows';
     const restoreFiles: Array<{ path: string; content: string }> = [];
 
+    const prewarm = async () => {
+      // pre-warm for dev watching
+      await fetch(new URL('/', process.env.DEPLOYMENT_URL));
+      await fetch(new URL('/api/chat', process.env.DEPLOYMENT_URL));
+    };
+
+    beforeAll(async () => {
+      await prewarm();
+    });
+
     afterEach(async () => {
       await Promise.all(
         restoreFiles.map(async (item) => {
@@ -54,6 +64,7 @@ export function createDevTests(config?: DevTestConfig) {
           }
         })
       );
+      await prewarm();
       restoreFiles.length = 0;
     });
 
@@ -145,6 +156,7 @@ ${apiFileContent}`
 
         while (true) {
           try {
+            await fetch(new URL('/api/chat', process.env.DEPLOYMENT_URL));
             const workflowContent = await fs.readFile(
               generatedWorkflow,
               'utf8'

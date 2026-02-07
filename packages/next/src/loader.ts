@@ -1,5 +1,7 @@
+import { connect, type Socket } from 'node:net';
 import { relative } from 'node:path';
 import { transform } from '@swc/core';
+import { type SocketMessage, serializeMessage } from './socket-server.js';
 
 type DecoratorOptions = import('@workflow/builders').DecoratorOptions;
 type WorkflowPatternMatch = import('@workflow/builders').WorkflowPatternMatch;
@@ -9,6 +11,94 @@ const decoratorOptionsCache = new Map<string, Promise<DecoratorOptions>>();
 
 // Cache for shared utilities from @workflow/builders (ESM module loaded dynamically in CommonJS context)
 let cachedBuildersModule: typeof import('@workflow/builders') | null = null;
+
+// Cache socket connection to avoid reconnecting on every file.
+let socketClientPromise: Promise<Socket | null> | null = null;
+
+function shouldUseSocketDiscovery(): boolean {
+  return Boolean(
+    process.env.WORKFLOW_SOCKET_PORT && process.env.WORKFLOW_SOCKET_AUTH
+  );
+}
+
+async function getSocketClient(): Promise<Socket | null> {
+  if (!shouldUseSocketDiscovery()) {
+    return null;
+  }
+
+  if (!socketClientPromise) {
+    socketClientPromise = (async () => {
+      const socketPort = process.env.WORKFLOW_SOCKET_PORT;
+      if (!socketPort) {
+        throw new Error(
+          'Invariant: no socket port provided for workflow loader'
+        );
+      }
+
+      const port = Number.parseInt(socketPort, 10);
+      if (Number.isNaN(port)) {
+        throw new Error(
+          `Invariant: invalid socket port provided: ${socketPort}`
+        );
+      }
+
+      const socket = connect({ port, host: '127.0.0.1' });
+
+      // Wait for connection
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          socket.destroy();
+          reject(new Error('Socket connection timeout'));
+        }, 1000);
+
+        socket.on('connect', () => {
+          socket.setNoDelay(true);
+          clearTimeout(timeout);
+          resolve();
+        });
+
+        socket.on('error', (err: Error) => {
+          clearTimeout(timeout);
+          reject(err);
+        });
+      });
+
+      return socket;
+    })();
+  }
+
+  return socketClientPromise;
+}
+
+async function notifySocketServer(
+  filename: string,
+  hasWorkflow: boolean,
+  hasStep: boolean
+): Promise<void> {
+  if (!shouldUseSocketDiscovery()) {
+    return;
+  }
+
+  const socket = await getSocketClient();
+  if (!socket) {
+    throw new Error('Invariant: missing workflow socket connection');
+  }
+
+  const authToken = process.env.WORKFLOW_SOCKET_AUTH;
+  if (!authToken) {
+    throw new Error(
+      'Invariant: no socket auth token provided for workflow loader'
+    );
+  }
+
+  const message: SocketMessage = {
+    type: 'file-discovered',
+    filePath: filename,
+    hasWorkflow,
+    hasStep,
+  };
+  socket.write(serializeMessage(message, authToken));
+}
 
 async function getBuildersModule(): Promise<
   typeof import('@workflow/builders')
@@ -91,6 +181,13 @@ export default async function workflowLoader(
 
   // Detect workflow patterns in the source code
   const patterns = await detectPatterns(normalizedSource);
+  // Always notify discovery tracking, even for `false/false`, so files that
+  // previously had workflow/step usage are removed from the tracked sets.
+  await notifySocketServer(
+    filename,
+    patterns.hasUseWorkflow,
+    patterns.hasUseStep
+  );
 
   // For @workflow SDK packages, only transform files with actual directives,
   // not files that just match serde patterns (which are internal SDK implementation files)
