@@ -73,7 +73,8 @@ async function getSocketClient(): Promise<Socket | null> {
 async function notifySocketServer(
   filename: string,
   hasWorkflow: boolean,
-  hasStep: boolean
+  hasStep: boolean,
+  hasSerde: boolean
 ): Promise<void> {
   if (!shouldUseSocketDiscovery()) {
     return;
@@ -96,6 +97,7 @@ async function notifySocketServer(
     filePath: filename,
     hasWorkflow,
     hasStep,
+    hasSerde,
   };
   socket.write(serializeMessage(message, authToken));
 }
@@ -186,7 +188,8 @@ export default async function workflowLoader(
   await notifySocketServer(
     filename,
     patterns.hasUseWorkflow,
-    patterns.hasUseStep
+    patterns.hasUseStep,
+    patterns.hasSerde
   );
 
   // For @workflow SDK packages, only transform files with actual directives,

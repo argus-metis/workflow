@@ -35,6 +35,7 @@ export async function getNextBuilderDeferred() {
     private socketIO?: SocketIO;
     private readonly discoveredWorkflowFiles = new Set<string>();
     private readonly discoveredStepFiles = new Set<string>();
+    private readonly discoveredSerdeFiles = new Set<string>();
     private trackedDependencyFiles = new Set<string>();
     private deferredBuildQueue = Promise.resolve();
     private cacheInitialized = false;
@@ -199,6 +200,7 @@ export async function getNextBuilderDeferred() {
           stepCandidates: this.discoveredStepFiles,
           validatePatterns: false,
         });
+      await this.pruneInvalidTrackedFiles(this.discoveredSerdeFiles);
       const workflowsChanged = !this.areFileSetsEqual(
         this.discoveredWorkflowFiles,
         workflowFiles
@@ -232,10 +234,7 @@ export async function getNextBuilderDeferred() {
       const discoveredWorkflowFiles = Array.from(
         this.discoveredWorkflowFiles
       ).sort();
-      const discoveredSerdeFiles = await this.collectDiscoveredSerdeFiles([
-        ...inputFiles,
-        ...this.trackedDependencyFiles,
-      ]);
+      const discoveredSerdeFiles = Array.from(this.discoveredSerdeFiles).sort();
       const discoveredEntries = {
         discoveredSteps: discoveredStepFiles,
         discoveredWorkflows: discoveredWorkflowFiles,
@@ -342,34 +341,51 @@ export async function getNextBuilderDeferred() {
         onFileDiscovered: (
           filePath: string,
           hasWorkflow: boolean,
-          hasStep: boolean
+          hasStep: boolean,
+          hasSerde: boolean
         ) => {
           const normalizedFilePath = this.normalizeDiscoveredFilePath(filePath);
           let hasTrackingChange = false;
+          let hasCacheTrackingChange = false;
 
           if (hasWorkflow) {
             if (!this.discoveredWorkflowFiles.has(normalizedFilePath)) {
               this.discoveredWorkflowFiles.add(normalizedFilePath);
               hasTrackingChange = true;
+              hasCacheTrackingChange = true;
             }
           } else {
-            hasTrackingChange =
-              this.discoveredWorkflowFiles.delete(normalizedFilePath) ||
-              hasTrackingChange;
+            const wasDeleted =
+              this.discoveredWorkflowFiles.delete(normalizedFilePath);
+            hasTrackingChange = wasDeleted || hasTrackingChange;
+            hasCacheTrackingChange = wasDeleted || hasCacheTrackingChange;
           }
 
           if (hasStep) {
             if (!this.discoveredStepFiles.has(normalizedFilePath)) {
               this.discoveredStepFiles.add(normalizedFilePath);
               hasTrackingChange = true;
+              hasCacheTrackingChange = true;
+            }
+          } else {
+            const wasDeleted =
+              this.discoveredStepFiles.delete(normalizedFilePath);
+            hasTrackingChange = wasDeleted || hasTrackingChange;
+            hasCacheTrackingChange = wasDeleted || hasCacheTrackingChange;
+          }
+
+          if (hasSerde) {
+            if (!this.discoveredSerdeFiles.has(normalizedFilePath)) {
+              this.discoveredSerdeFiles.add(normalizedFilePath);
+              hasTrackingChange = true;
             }
           } else {
             hasTrackingChange =
-              this.discoveredStepFiles.delete(normalizedFilePath) ||
+              this.discoveredSerdeFiles.delete(normalizedFilePath) ||
               hasTrackingChange;
           }
 
-          if (hasTrackingChange) {
+          if (hasTrackingChange && hasCacheTrackingChange) {
             this.scheduleWorkflowsCacheWrite();
           }
         },
@@ -441,29 +457,34 @@ export async function getNextBuilderDeferred() {
       return signatureHash.digest('hex');
     }
 
-    private async collectDiscoveredSerdeFiles(
-      candidateFiles: string[]
-    ): Promise<string[]> {
-      const normalizedFiles = Array.from(
-        new Set(
-          candidateFiles.map((filePath) =>
-            this.normalizeDiscoveredFilePath(filePath)
-          )
-        )
-      ).sort();
+    private async pruneInvalidTrackedFiles(
+      files: Set<string>
+    ): Promise<boolean> {
+      const trackedFiles = Array.from(files);
+      if (trackedFiles.length === 0) {
+        return false;
+      }
 
-      const serdeFlags = await Promise.all(
-        normalizedFiles.map(async (filePath) => {
+      const validity = await Promise.all(
+        trackedFiles.map(async (filePath) => {
           try {
-            const source = await readFile(filePath, 'utf-8');
-            return detectWorkflowPatterns(source).hasSerde;
+            const fileStats = await stat(filePath);
+            return fileStats.isFile();
           } catch {
             return false;
           }
         })
       );
 
-      return normalizedFiles.filter((_filePath, index) => serdeFlags[index]);
+      let hasChanges = false;
+      trackedFiles.forEach((filePath, index) => {
+        if (!validity[index]) {
+          files.delete(filePath);
+          hasChanges = true;
+        }
+      });
+
+      return hasChanges;
     }
 
     private async refreshTrackedDependencyFiles(

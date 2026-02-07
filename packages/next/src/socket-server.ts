@@ -24,6 +24,7 @@ export type SocketMessage =
       filePath: string;
       hasWorkflow: boolean;
       hasStep: boolean;
+      hasSerde: boolean;
     }
   | { type: 'trigger-build' }
   | { type: 'build-complete' };
@@ -36,7 +37,8 @@ export interface SocketServerConfig {
   onFileDiscovered: (
     filePath: string,
     hasWorkflow: boolean,
-    hasStep: boolean
+    hasStep: boolean,
+    hasSerde: boolean
   ) => void;
   onTriggerBuild: () => void;
 }
@@ -148,7 +150,8 @@ export async function createSocketServer(
           config.onFileDiscovered(
             message.filePath,
             message.hasWorkflow,
-            message.hasStep
+            message.hasStep,
+            message.hasSerde
           );
         } else if (message.type === 'trigger-build') {
           config.onTriggerBuild();
