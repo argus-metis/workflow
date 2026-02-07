@@ -26,6 +26,7 @@ export async function getNextBuilderDeferred() {
     STEP_QUEUE_TRIGGER,
     WORKFLOW_QUEUE_TRIGGER,
     detectWorkflowPatterns,
+    isWorkflowSdkFile,
     // biome-ignore lint/security/noGlobalEval: Need to use eval here to avoid TypeScript from transpiling the import statement into `require()`
   } = (await eval(
     'import("@workflow/builders")'
@@ -144,15 +145,25 @@ export async function getNextBuilderDeferred() {
     private async reconcileDiscoveredEntries({
       workflowCandidates,
       stepCandidates,
+      serdeCandidates,
       validatePatterns,
     }: {
       workflowCandidates: Iterable<string>;
       stepCandidates: Iterable<string>;
+      serdeCandidates?: Iterable<string>;
       validatePatterns: boolean;
-    }): Promise<{ workflowFiles: Set<string>; stepFiles: Set<string> }> {
+    }): Promise<{
+      workflowFiles: Set<string>;
+      stepFiles: Set<string>;
+      serdeFiles: Set<string>;
+    }> {
       const candidatesByFile = new Map<
         string,
-        { hasWorkflowCandidate: boolean; hasStepCandidate: boolean }
+        {
+          hasWorkflowCandidate: boolean;
+          hasStepCandidate: boolean;
+          hasSerdeCandidate: boolean;
+        }
       >();
 
       for (const filePath of workflowCandidates) {
@@ -164,6 +175,7 @@ export async function getNextBuilderDeferred() {
           candidatesByFile.set(normalizedPath, {
             hasWorkflowCandidate: true,
             hasStepCandidate: false,
+            hasSerdeCandidate: false,
           });
         }
       }
@@ -177,7 +189,24 @@ export async function getNextBuilderDeferred() {
           candidatesByFile.set(normalizedPath, {
             hasWorkflowCandidate: false,
             hasStepCandidate: true,
+            hasSerdeCandidate: false,
           });
+        }
+      }
+
+      if (serdeCandidates) {
+        for (const filePath of serdeCandidates) {
+          const normalizedPath = this.normalizeDiscoveredFilePath(filePath);
+          const existing = candidatesByFile.get(normalizedPath);
+          if (existing) {
+            existing.hasSerdeCandidate = true;
+          } else {
+            candidatesByFile.set(normalizedPath, {
+              hasWorkflowCandidate: false,
+              hasStepCandidate: false,
+              hasSerdeCandidate: true,
+            });
+          }
         }
       }
 
@@ -193,19 +222,23 @@ export async function getNextBuilderDeferred() {
             }
 
             if (!validatePatterns) {
+              const isSdkFile = isWorkflowSdkFile(filePath);
               return {
                 filePath,
                 hasUseWorkflow: candidates.hasWorkflowCandidate,
                 hasUseStep: candidates.hasStepCandidate,
+                hasSerde: candidates.hasSerdeCandidate && !isSdkFile,
               };
             }
 
             const source = await readFile(filePath, 'utf-8');
             const patterns = detectWorkflowPatterns(source);
+            const isSdkFile = isWorkflowSdkFile(filePath);
             return {
               filePath,
               hasUseWorkflow: patterns.hasUseWorkflow,
               hasUseStep: patterns.hasUseStep,
+              hasSerde: patterns.hasSerde && !isSdkFile,
             };
           } catch {
             return null;
@@ -215,6 +248,7 @@ export async function getNextBuilderDeferred() {
 
       const workflowFiles = new Set<string>();
       const stepFiles = new Set<string>();
+      const serdeFiles = new Set<string>();
       for (const entry of validatedEntries) {
         if (!entry) {
           continue;
@@ -225,19 +259,22 @@ export async function getNextBuilderDeferred() {
         if (entry.hasUseStep) {
           stepFiles.add(entry.filePath);
         }
+        if (entry.hasSerde) {
+          serdeFiles.add(entry.filePath);
+        }
       }
 
-      return { workflowFiles, stepFiles };
+      return { workflowFiles, stepFiles, serdeFiles };
     }
 
     private async validateDiscoveredEntryFiles(): Promise<void> {
-      const { workflowFiles, stepFiles } =
+      const { workflowFiles, stepFiles, serdeFiles } =
         await this.reconcileDiscoveredEntries({
           workflowCandidates: this.discoveredWorkflowFiles,
           stepCandidates: this.discoveredStepFiles,
-          validatePatterns: false,
+          serdeCandidates: this.discoveredSerdeFiles,
+          validatePatterns: true,
         });
-      await this.pruneInvalidTrackedFiles(this.discoveredSerdeFiles);
       const workflowsChanged = !this.areFileSetsEqual(
         this.discoveredWorkflowFiles,
         workflowFiles
@@ -246,16 +283,27 @@ export async function getNextBuilderDeferred() {
         this.discoveredStepFiles,
         stepFiles
       );
+      const serdeChanged = !this.areFileSetsEqual(
+        this.discoveredSerdeFiles,
+        serdeFiles
+      );
 
-      if (workflowsChanged || stepsChanged) {
+      if (workflowsChanged || stepsChanged || serdeChanged) {
         this.discoveredWorkflowFiles.clear();
         this.discoveredStepFiles.clear();
+        this.discoveredSerdeFiles.clear();
         for (const filePath of workflowFiles) {
           this.discoveredWorkflowFiles.add(filePath);
         }
         for (const filePath of stepFiles) {
           this.discoveredStepFiles.add(filePath);
         }
+        for (const filePath of serdeFiles) {
+          this.discoveredSerdeFiles.add(filePath);
+        }
+      }
+
+      if (workflowsChanged || stepsChanged) {
         this.scheduleWorkflowsCacheWrite();
       }
     }
@@ -276,7 +324,10 @@ export async function getNextBuilderDeferred() {
       const discoveredWorkflowFiles = Array.from(
         this.discoveredWorkflowFiles
       ).sort();
-      const discoveredSerdeFiles = Array.from(this.discoveredSerdeFiles).sort();
+      const trackedSerdeFiles = await this.collectTrackedSerdeFiles();
+      const discoveredSerdeFiles = Array.from(
+        new Set([...this.discoveredSerdeFiles, ...trackedSerdeFiles])
+      ).sort();
       const discoveredEntries = {
         discoveredSteps: discoveredStepFiles,
         discoveredWorkflows: discoveredWorkflowFiles,
@@ -499,34 +550,19 @@ export async function getNextBuilderDeferred() {
       return signatureHash.digest('hex');
     }
 
-    private async pruneInvalidTrackedFiles(
-      files: Set<string>
-    ): Promise<boolean> {
-      const trackedFiles = Array.from(files);
-      if (trackedFiles.length === 0) {
-        return false;
+    private async collectTrackedSerdeFiles(): Promise<string[]> {
+      if (this.trackedDependencyFiles.size === 0) {
+        return [];
       }
 
-      const validity = await Promise.all(
-        trackedFiles.map(async (filePath) => {
-          try {
-            const fileStats = await stat(filePath);
-            return fileStats.isFile();
-          } catch {
-            return false;
-          }
-        })
-      );
-
-      let hasChanges = false;
-      trackedFiles.forEach((filePath, index) => {
-        if (!validity[index]) {
-          files.delete(filePath);
-          hasChanges = true;
-        }
+      const { serdeFiles } = await this.reconcileDiscoveredEntries({
+        workflowCandidates: [],
+        stepCandidates: [],
+        serdeCandidates: this.trackedDependencyFiles,
+        validatePatterns: true,
       });
 
-      return hasChanges;
+      return Array.from(serdeFiles);
     }
 
     private async refreshTrackedDependencyFiles(
@@ -679,20 +715,25 @@ export async function getNextBuilderDeferred() {
       if (!cachedData) {
         return;
       }
-      const { workflowFiles, stepFiles } =
+      const { workflowFiles, stepFiles, serdeFiles } =
         await this.reconcileDiscoveredEntries({
           workflowCandidates: cachedData.workflowFiles,
           stepCandidates: cachedData.stepFiles,
+          serdeCandidates: this.discoveredSerdeFiles,
           validatePatterns: true,
         });
 
       this.discoveredWorkflowFiles.clear();
       this.discoveredStepFiles.clear();
+      this.discoveredSerdeFiles.clear();
       for (const filePath of workflowFiles) {
         this.discoveredWorkflowFiles.add(filePath);
       }
       for (const filePath of stepFiles) {
         this.discoveredStepFiles.add(filePath);
+      }
+      for (const filePath of serdeFiles) {
+        this.discoveredSerdeFiles.add(filePath);
       }
     }
 
