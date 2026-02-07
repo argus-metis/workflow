@@ -1,5 +1,5 @@
-import { constants } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { constants } from 'node:fs';
 import { access, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
@@ -54,9 +54,14 @@ export async function getNextBuilderDeferred() {
     async onBeforeDeferredEntries(): Promise<void> {
       await this.initializeDiscoveryState();
       await this.validateDiscoveredEntryFiles();
+      const implicitStepFiles = await this.resolveImplicitStepFiles();
 
       const inputFiles = Array.from(
-        new Set([...this.discoveredWorkflowFiles, ...this.discoveredStepFiles])
+        new Set([
+          ...this.discoveredWorkflowFiles,
+          ...this.discoveredStepFiles,
+          ...implicitStepFiles,
+        ])
       ).sort();
       const buildSignature =
         await this.createDeferredBuildSignature(inputFiles);
@@ -67,7 +72,7 @@ export async function getNextBuilderDeferred() {
         }
 
         try {
-          await this.buildDiscoveredFiles(inputFiles);
+          await this.buildDiscoveredFiles(inputFiles, implicitStepFiles);
         } catch (error) {
           console.warn(
             '[workflow] Deferred entries build failed. Will retry only after inputs change.',
@@ -88,6 +93,38 @@ export async function getNextBuilderDeferred() {
       });
 
       await pendingBuild;
+    }
+
+    private async resolveImplicitStepFiles(): Promise<string[]> {
+      let workflowCjsEntry: string;
+      try {
+        workflowCjsEntry = require.resolve('workflow', {
+          paths: [this.config.workingDir],
+        });
+      } catch {
+        return [];
+      }
+
+      const workflowDistDir = dirname(workflowCjsEntry);
+      const workflowStdlibPath = this.normalizeDiscoveredFilePath(
+        join(workflowDistDir, 'stdlib.js')
+      );
+
+      const candidatePaths = [workflowStdlibPath];
+      const existingFiles = await Promise.all(
+        candidatePaths.map(async (filePath) => {
+          try {
+            const fileStats = await stat(filePath);
+            return fileStats.isFile() ? filePath : null;
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      return existingFiles.filter((filePath): filePath is string =>
+        Boolean(filePath)
+      );
     }
 
     private areFileSetsEqual(a: Set<string>, b: Set<string>): boolean {
@@ -223,14 +260,19 @@ export async function getNextBuilderDeferred() {
       }
     }
 
-    private async buildDiscoveredFiles(inputFiles: string[]) {
+    private async buildDiscoveredFiles(
+      inputFiles: string[],
+      implicitStepFiles: string[]
+    ) {
       const outputDir = await this.findAppDirectory();
       const workflowGeneratedDir = join(outputDir, '.well-known/workflow/v1');
       const cacheDir = join(this.config.workingDir, this.getDistDir(), 'cache');
       await mkdir(cacheDir, { recursive: true });
       const manifestBuildDir = join(cacheDir, 'workflow-generated-manifest');
       const tempRouteFileName = 'route.js.temp';
-      const discoveredStepFiles = Array.from(this.discoveredStepFiles).sort();
+      const discoveredStepFiles = Array.from(
+        new Set([...this.discoveredStepFiles, ...implicitStepFiles])
+      ).sort();
       const discoveredWorkflowFiles = Array.from(
         this.discoveredWorkflowFiles
       ).sort();
