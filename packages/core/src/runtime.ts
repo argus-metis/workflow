@@ -289,13 +289,13 @@ export function workflowEntrypoint(
                       ) {
                         const retryCount = serverErrorRetryCount ?? 0;
                         const delays = [5, 30, 7200]; // 5s, 30s, 120min
-                        if (retryCount < delays.length) {
+                        if (retryCount < delaySecondSteps.length) {
                           runtimeLogger.warn(
                             'Server error (5xx), re-enqueueing workflow with backoff',
                             {
                               workflowRunId: runId,
                               retryCount,
-                              delaySeconds: delays[retryCount],
+                              delaySeconds: delaySecondSteps[retryCount],
                               error: err.message,
                             }
                           );
@@ -308,7 +308,7 @@ export function workflowEntrypoint(
                               traceCarrier: await serializeTraceCarrier(),
                               requestedAt: new Date(),
                             },
-                            { delaySeconds: delays[retryCount] }
+                            { delaySeconds: delaySecondSteps[retryCount] }
                           );
                           return; // Don't fail the run, retry later
                         }
