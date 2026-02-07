@@ -288,7 +288,7 @@ export function workflowEntrypoint(
                         err.status >= 500
                       ) {
                         const retryCount = serverErrorRetryCount ?? 0;
-                        const delays = [5, 30, 7200]; // 5s, 30s, 120min
+                        const delaySecondSteps = [5, 30, 7200]; // 5s, 30s, 120min
                         if (retryCount < delaySecondSteps.length) {
                           runtimeLogger.warn(
                             'Server error (5xx), re-enqueueing workflow with backoff',
