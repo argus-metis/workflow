@@ -51,6 +51,8 @@ export interface HealthCheckResult {
   healthy: boolean;
   /** Error message if health check failed */
   error?: string;
+  /** Latency if the health check was successful */
+  latencyMs?: number;
 }
 
 /**
@@ -240,7 +242,10 @@ export async function healthCheck(
 
         const response = parseHealthCheckResponse(chunks);
         if (response) {
-          return response;
+          return {
+            ...response,
+            latencyMs: Date.now() - startTime,
+          };
         }
 
         await new Promise((resolve) =>
@@ -252,7 +257,6 @@ export async function healthCheck(
         );
       }
     }
-
     return {
       healthy: false,
       error: `Health check timed out after ${timeout}ms`,
